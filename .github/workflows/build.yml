@@ -6,6 +6,9 @@ on:
       - "**"
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build jar
@@ -14,6 +17,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -36,14 +42,45 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Build jar
-        run: ./gradlew build
+      - name: Determine release version
+        id: version
+        shell: bash
+        run: |
+          BASE_VERSION="$(grep '^mod_version=' gradle.properties | cut -d= -f2)"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION="${MAJOR}.$((MINOR + GITHUB_RUN_NUMBER - 1)).${PATCH}"
+          else
+            VERSION="$BASE_VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=aempire-v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Upload jar artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sivage-jars
-          path: |
-            build/libs/*.jar
-            !build/libs/*-sources.jar
-          if-no-files-found: error
+      - name: Build jar
+        run: ./gradlew build "-Pmod_version=${{ steps.version.outputs.version }}"
+
+      - name: Rename jar
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "build/libs/sivage-${{ steps.version.outputs.version }}.jar" "dist/sivage-aempire-${{ steps.version.outputs.version }}.jar"
+
+      - name: Delete previous automated release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName | select(startswith("aempire-v"))' | while read -r TAG; do
+            gh release delete "$TAG" --cleanup-tag --yes || true
+          done
+
+      - name: Create release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "dist/sivage-aempire-${{ steps.version.outputs.version }}.jar" \
+            --title "sivage-aempire ${{ steps.version.outputs.version }}" \
+            --notes "Automated build for commit ${{ github.sha }}"
