@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.too_large.title",
+    "fallback": "Failed to Display Image!"
+  },
+  "body": [
+    {
+      "type": "minecraft:item",
+      "item": {
+        "id": "minecraft:barrier"
+      },
+      "description": {
+        "contents": {
+          "translate": "sivage.dialog.too_large.description",
+          "fallback": "The requested image is too large!"
+        }
+      },
+      "show_decorations": false,
+      "show_tooltip": false
+    },
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "translate": "sivage.dialog.too_large.hint",
+        "fallback": "HINT: Scale down the image beforehand to a reasonable size; Without a frame, each block has a resolution of 128 x 128 pixels and with frame it is 112 x 112 pixels.",
+        "color": "#deddda",
+        "italic": true
+      },
+      "width": 300
+    }
+  ],
+  "actions": [
+    {
+      "label": ""
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false
+}

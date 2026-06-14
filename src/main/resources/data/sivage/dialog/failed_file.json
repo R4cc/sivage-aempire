@@ -1,0 +1,44 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.failed_file.title",
+    "fallback": "Failed to Display Image!"
+  },
+  "body": [
+    {
+      "type": "minecraft:item",
+      "item": {
+        "id": "minecraft:barrier"
+      },
+      "description": {
+        "contents": {
+          "translate": "sivage.dialog.failed_file.description",
+          "fallback": "The server was not able to use the contents of the provided URL."
+        }
+      },
+      "show_decorations": false,
+      "show_tooltip": false
+    },
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "translate": "sivage.dialog.failed_file.hint",
+        "fallback": "HINT: Make sure the URL is pointing to a file directly (a download link) and that said file is an image of one of the supported formats: PNG, JPEG, WEBP, GIF, BMP, ICO, QOI, TIFF, FF, HDR & TGA",
+        "color": "#deddda",
+        "italic": true,
+        "click_event": {
+          "action": "open_url",
+          "url": "https://codeberg.org/SammyForReal/Sivage#supported-formats"
+        }
+      },
+      "width": 300
+    }
+  ],
+  "actions": [
+    {
+      "label": ""
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false
+}

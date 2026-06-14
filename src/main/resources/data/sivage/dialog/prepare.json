@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.prepare.title",
+    "fallback": "Preparing Image…"
+  },
+  "inputs": [],
+  "can_close_with_escape": true,
+  "pause": false,
+  "after_action": "close",
+  "action": {
+    "label": {
+      "translate": "sivage.dialog.prepare.button.background",
+      "fallback": "Continue in Background"
+    }
+  }
+}

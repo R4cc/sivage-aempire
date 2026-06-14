@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.failed_link.title",
+    "fallback": "Failed to Display Image!"
+  },
+  "body": [
+    {
+      "type": "minecraft:item",
+      "item": {
+        "id": "minecraft:barrier"
+      },
+      "description": {
+        "contents": {
+          "translate": "sivage.dialog.failed_link.description",
+          "fallback": "The entered URL could not be opened."
+        }
+      },
+      "show_decorations": false,
+      "show_tooltip": false
+    },
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "translate": "sivage.dialog.failed_link.hint",
+        "fallback": "HINT: Make sure the URL starts with 'https://' and directly downloads an image, when pasting inside a browser.",
+        "color": "#deddda",
+        "italic": true
+      },
+      "width": 300
+    }
+  ],
+  "actions": [
+    {
+      "label": ""
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false
+}

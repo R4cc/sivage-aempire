@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "sivage",
+  "version": "${version}",
+  "name": "Sivage",
+  "description": "An easy way to generate server-sided images via dialog GUIs and map art.",
+  "authors": [
+    "Sammy L. Koch"
+  ],
+  "contact": {
+    "homepage": "https://kleinbox.dev/",
+    "sources": "https://codeberg.org/SammyForReal/sivage",
+    "issues": "https://codeberg.org/SammyForReal/sivage/issues",
+    "email": "SammyKoch@pm.me"
+  },
+  "license": "LGPL-3.0-only",
+  "icon": "assets/sivage/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.kleinbox.sivage.Sivage"
+    ]
+  },
+  "mixins": [
+    "sivage.mixins.json"
+  ],
+  "accessWidener": "sivage.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": [
+      "26.1",
+      "26.1.2"
+    ],
+    "java": ">=25",
+    "fabric-api": "*",
+    "fabric-permissions-api-v0": "*"
+  }
+}

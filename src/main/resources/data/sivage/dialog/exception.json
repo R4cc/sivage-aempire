@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.exception.title",
+    "fallback": "Uncaught exception!"
+  },
+  "body": [
+    {
+      "type": "minecraft:item",
+      "item": {
+        "id": "minecraft:barrier"
+      },
+      "description": {
+        "contents": {
+          "translate": "sivage.dialog.exception.description",
+          "fallback": "Something went wrong while trying to generate the image. Sorry!"
+        }
+      },
+      "show_decorations": false,
+      "show_tooltip": false
+    },
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "translate": "sivage.dialog.exception.hint",
+        "fallback": "Your item has been refunded. Please report this to the Sivage mod with server logs!",
+        "color": "#deddda",
+        "italic": true
+      },
+      "width": 300
+    }
+  ],
+  "actions": [
+    {
+      "label": ""
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false
+}

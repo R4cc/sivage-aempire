@@ -1,0 +1,104 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id("at.released.wasm2class.plugin") version "${wasm2class_version}"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+    maven { url = 'https://maven.parchmentmc.org' }
+    maven { url 'https://repo.sleeping.town/' }
+    mavenCentral()
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+    accessWidenerPath = file("src/main/resources/sivage.accesswidener")
+
+	mods {
+		"sivage" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+    // Fabric API. This is technically optional, but you probably want it anyway.
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Permission checks through Fabric Permissions API, backed by LuckPerms when installed.
+    implementation(include("me.lucko:fabric-permissions-api:${project.fabric_permissions_api_version}"))
+
+    // Config Lib
+    implementation(include('folk.sisby:kaleido-config:0.3.3+1.3.2'))
+
+    // WASM runtime (for image parsing)
+    implementation("com.dylibso.chicory:compiler:${project.chicory_version}")
+    implementation(include("com.dylibso.chicory:runtime:${project.chicory_version}"))
+    implementation(include("com.dylibso.chicory:wasm:${project.chicory_version}"))
+}
+
+wasm2class {
+    targetPackage = "dev.kleinbox.sivage.image"
+    //noinspection GroovyAssignabilityCheck
+    modules {
+        //noinspection ConfigurationAvoidance
+        create("RawImaging") {
+            wasm = file("src/main/rust/target/wasm32-unknown-unknown/release/imaging.wasm")
+        }
+    }
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": inputs.properties.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+// Include debug information in build (for remote debugging in production)
+/*tasks.withType(JavaCompile).configureEach {
+    options.debug = true
+    options.compilerArgs += ['-g:vars,lines,source']
+}*/
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	inputs.property "archivesName", project.base.archivesName
+
+	from("COPYING.md") {
+		rename { "${it}_${inputs.properties.archivesName}"}
+	}
+}

@@ -1,0 +1,124 @@
+{
+  "type": "minecraft:multi_action",
+  "title": {
+    "translate": "sivage.dialog.new.title",
+    "fallback": "Create New Image"
+  },
+  "body": {
+    "type": "minecraft:item",
+    "item": {
+      "id": "minecraft:painting"
+    },
+    "description": {
+      "contents": {
+        "translate": "sivage.dialog.new.description",
+        "fallback": "Enter a link pointing towards an image file directly."
+      },
+      "width": 180
+    },
+    "show_decorations": false,
+    "show_tooltip": false
+  },
+  "inputs": [
+    {
+      "type": "minecraft:text",
+      "key": "url",
+      "label": {
+        "text": "URL",
+        "extra": [
+          {
+            "text": "*",
+            "extra": [
+              {
+                "text": ":",
+                "color": "white"
+              }
+            ],
+            "color": "red"
+          }
+        ]
+      },
+      "max_length": 2048
+    },
+    {
+      "type": "minecraft:number_range",
+      "key": "width",
+      "width": 100,
+      "label": {
+        "translate": "sivage.dialog.new.slider.width",
+        "fallback": "block(s) wide"
+      },
+      "label_format": "%2$s %1$s",
+      "start": 1,
+      "end": 8,
+      "step": 1,
+      "initial": 2
+    },
+    {
+      "type": "minecraft:number_range",
+      "key": "height",
+      "width": 100,
+      "label": {
+        "translate": "sivage.dialog.new.slider.height",
+        "fallback": "block(s) high"
+      },
+      "label_format": "%2$s %1$s",
+      "start": 1,
+      "end": 8,
+      "step": 1,
+      "initial": 1
+    },
+    {
+      "type": "minecraft:boolean",
+      "key": "stretch",
+      "label": {
+        "translate": "sivage.dialog.new.checkbox.stretch",
+        "fallback": "Stretch Image to Aspect-Ratio"
+      },
+      "initial": false
+    },
+    {
+      "type": "minecraft:boolean",
+      "key": "transparent",
+      "label": {
+        "translate": "sivage.dialog.new.checkbox.invisible",
+        "fallback": "Invisible Frame"
+      },
+      "initial": false
+    },
+    {
+      "type": "minecraft:boolean",
+      "key": "dithering",
+      "label": {
+        "translate": "sivage.dialog.new.checkbox.dithering",
+        "fallback": "Use Dithering"
+      },
+      "initial": true
+    },
+    {
+      "type": "minecraft:boolean",
+      "key": "nearestNeighbor",
+      "label": {
+        "translate": "sivage.dialog.new.checkbox.nnf",
+        "fallback": "Nearest Neighbor Filter"
+      },
+      "initial": true
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false,
+  "after_action": "wait_for_response",
+  "actions": [
+    {
+      "label": {
+        "translate": "sivage.dialog.new.button.generate",
+        "fallback": "Generate"
+      },
+      "width": 100,
+      "action": {
+        "type": "minecraft:dynamic/custom",
+        "id": "sivage:new"
+      }
+    }
+  ]
+}

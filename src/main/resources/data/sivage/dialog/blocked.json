@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:notice",
+  "title": {
+    "translate": "sivage.dialog.blocked.title",
+    "fallback": "Failed to Display Image!"
+  },
+  "body": [
+    {
+      "type": "minecraft:item",
+      "item": {
+        "id": "minecraft:barrier"
+      },
+      "description": {
+        "contents": {
+          "translate": "sivage.dialog.blocked.description",
+          "fallback": "The entered URL has been blocked by the server."
+        }
+      },
+      "show_decorations": false,
+      "show_tooltip": false
+    },
+    {
+      "type": "minecraft:plain_message",
+      "contents": {
+        "translate": "sivage.dialog.blocked.hint",
+        "fallback": "HINT: Check which sources are allowed or ask an admin for further details.",
+        "color": "#deddda",
+        "italic": true
+      },
+      "width": 300
+    }
+  ],
+  "actions": [
+    {
+      "label": ""
+    }
+  ],
+  "can_close_with_escape": true,
+  "pause": false
+}
