@@ -49,7 +49,7 @@ jobs:
           BASE_VERSION="$(grep '^mod_version=' gradle.properties | cut -d= -f2)"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            VERSION="${MAJOR}.$((MINOR + GITHUB_RUN_NUMBER - 1)).${PATCH}"
+            VERSION="${MAJOR}.${MINOR}.$((PATCH + GITHUB_RUN_NUMBER - 1))"
           else
             VERSION="$BASE_VERSION"
           fi
