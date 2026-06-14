@@ -53,9 +53,20 @@ fileSizeLimit = 500000000
 # When enabled, each player may have only one image generated at a time.
 # default: false
 playerLimit = false
+# Maximum width and height, in blocks, for newly created images.
+# range: 1 - 8
+# default: 4
+maxSize = 4
+# When enabled, newly created images will use invisible item frames.
+# default: false
+invisibleFrames = false
+# Maximum amount of placed images each player may own at a time. Set to 0 to disable this limit.
+# range: 0 - 2147483647
+# default: 16
+maxImagesPerPlayer = 16
 ```
 
-Players can have up to 16 placed Sivage images at a time. An image counts once regardless of its block size, and removing an image frees that slot again. To disable this cap for a LuckPerms group or player, grant `sivage.limit.bypass`.
+The image count limit counts each Sivage image once regardless of its block size, and removing an image frees that slot again. To disable this cap for a LuckPerms group or player, grant `sivage.limit.bypass`.
 
 > **Note** Both the white- and blacklist allow the usage of wildcards; To be more specific, `*` for everything and `*.example.com` for subdomain wildcards. IP Addresses and protocols not following HTTP(S) will always be rejected.
 

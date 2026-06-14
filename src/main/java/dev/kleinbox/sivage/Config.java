@@ -35,5 +35,19 @@ public class Config extends WrappedConfig {
         @Comment("When enabled, each player may have only one image generated at a time.")
         @Alias("player_limit")
         public boolean playerLimit = false;
+
+        @Comment("Maximum width and height, in blocks, for newly created images.")
+        @IntegerRange(min = 1, max = 8)
+        @Alias("max_size")
+        public int maxSize = 4;
+
+        @Comment("When enabled, newly created images will use invisible item frames.")
+        @Alias("invisible_frames")
+        public boolean invisibleFrames = false;
+
+        @Comment("Maximum amount of placed images each player may own at a time. Set to 0 to disable this limit.")
+        @IntegerRange(min = 0, max = Integer.MAX_VALUE)
+        @Alias("max_images_per_player")
+        public int maxImagesPerPlayer = 16;
     }
 }

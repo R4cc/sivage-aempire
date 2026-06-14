@@ -86,19 +86,13 @@ public class ImageItem {
     ));
     public static final AttachmentType<@NotNull Long> CREATED_AT_TYPE = AttachmentRegistry.createPersistent(Sivage.of("created_at"), Codec.LONG);
     public static final String IS_CUSTOM_IMAGE_TYPE = "custom_image";
-    public static final int MAX_SIZE = 4;
-    public static final int MAX_IMAGES_PER_PLAYER = 16;
+    public static final int MAX_SUPPORTED_SIZE = 8;
     private static final DateTimeFormatter CREATED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
     private static final HashMap<UUID, CompletableFuture<Void>> RUNNING = new HashMap<>();
     private static final HashMap<UUID, Integer> PENDING_IMAGE_CREATIONS = new HashMap<>();
 
     public static final MutableComponent LIMIT_REACHED_MSG = Component.translatableWithFallback("sivage.hud.limit_reached", "Please wait for the previous image to finish generating.");
-    public static final MutableComponent IMAGE_LIMIT_REACHED_MSG = Component.translatableWithFallback(
-            "sivage.hud.image_limit_reached",
-            "You can only have %s Sivage images placed at a time.",
-            MAX_IMAGES_PER_PLAYER
-    );
 
     public static boolean isStillGenerating(UUID uuid) {
         if (!Sivage.CONFIG.game.playerLimit) return false;
@@ -227,7 +221,7 @@ public class ImageItem {
                 submittedMetadata.width(),
                 submittedMetadata.height(),
                 submittedMetadata.stretch(),
-                false,
+                Sivage.CONFIG.game.invisibleFrames,
                 submittedMetadata.dithering(),
                 submittedMetadata.nearestNeighbor()
         );
@@ -256,7 +250,7 @@ public class ImageItem {
 
         Optional<Boolean> imageSlotReservation = reserveImageSlot(player);
         if (imageSlotReservation.isEmpty()) {
-            player.sendOverlayMessage(IMAGE_LIMIT_REACHED_MSG);
+            player.sendOverlayMessage(getImageLimitReachedMessage());
             ImageDialogs.close(player);
             return false;
         }
@@ -426,8 +420,8 @@ public class ImageItem {
 
     private static void forWholeImage(ServerLevel level, ItemFrame frame, ForFramePart applier) {
         AABB box = new AABB(
-                frame.getX() - MAX_SIZE - 0.6, frame.getY() - MAX_SIZE - 0.6, frame.getZ() - MAX_SIZE - 0.6,
-                frame.getX() + MAX_SIZE + 0.6, frame.getY() + MAX_SIZE + 0.6, frame.getZ() + MAX_SIZE + 0.6
+                frame.getX() - MAX_SUPPORTED_SIZE - 0.6, frame.getY() - MAX_SUPPORTED_SIZE - 0.6, frame.getZ() - MAX_SUPPORTED_SIZE - 0.6,
+                frame.getX() + MAX_SUPPORTED_SIZE + 0.6, frame.getY() + MAX_SUPPORTED_SIZE + 0.6, frame.getZ() + MAX_SUPPORTED_SIZE + 0.6
         );
 
         UUID uuid = UUID.fromString(frame.getAttachedOrThrow(ID_TYPE));
@@ -590,7 +584,8 @@ public class ImageItem {
     }
 
     private static Optional<Boolean> reserveImageSlot(ServerPlayer player) {
-        if (SivagePermissions.canBypassImageLimit(player))
+        int maxImagesPerPlayer = Sivage.CONFIG.game.maxImagesPerPlayer;
+        if (maxImagesPerPlayer <= 0 || SivagePermissions.canBypassImageLimit(player))
             return Optional.of(false);
 
         synchronized (PENDING_IMAGE_CREATIONS) {
@@ -598,7 +593,7 @@ public class ImageItem {
             int activeImages = countOwnedImages(player);
             int pendingImages = PENDING_IMAGE_CREATIONS.getOrDefault(playerId, 0);
 
-            if (activeImages + pendingImages >= MAX_IMAGES_PER_PLAYER)
+            if (activeImages + pendingImages >= maxImagesPerPlayer)
                 return Optional.empty();
 
             PENDING_IMAGE_CREATIONS.put(playerId, pendingImages + 1);
@@ -641,7 +636,16 @@ public class ImageItem {
     }
 
     private static void playSound(ServerLevel level, int size, BlockPos blockpos, SoundEvent sound) {
-        float pitch = 1f - .75f / (MAX_SIZE*MAX_SIZE) * size;
+        float maxSize = Sivage.CONFIG.game.maxSize;
+        float pitch = 1f - .75f / (maxSize * maxSize) * size;
         level.playSound(null, blockpos, sound, SoundSource.BLOCKS, 1f, pitch);
+    }
+
+    private static MutableComponent getImageLimitReachedMessage() {
+        return Component.translatableWithFallback(
+                "sivage.hud.image_limit_reached",
+                "You can only have %s Sivage images placed at a time.",
+                Sivage.CONFIG.game.maxImagesPerPlayer
+        );
     }
 }

@@ -50,7 +50,7 @@
       },
       "label_format": "%2$s %1$s",
       "start": 1,
-      "end": 4,
+      "end": 8,
       "step": 1,
       "initial": 2
     },
@@ -64,7 +64,7 @@
       },
       "label_format": "%2$s %1$s",
       "start": 1,
-      "end": 4,
+      "end": 8,
       "step": 1,
       "initial": 1
     },

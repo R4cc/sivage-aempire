@@ -2,6 +2,7 @@ package dev.kleinbox.sivage.item;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import dev.kleinbox.sivage.Sivage;
 
 public record ImageMetaData(String url, float width, float height, boolean stretch, boolean transparent, boolean dithering, boolean nearestNeighbor) {
     public static final Codec<ImageMetaData> CODEC = RecordCodecBuilder.create(instance ->
@@ -18,11 +19,11 @@ public record ImageMetaData(String url, float width, float height, boolean stret
 
     public int getWidth() {
         int width = (int) width();
-        return Math.min(width, ImageItem.MAX_SIZE) * 128;
+        return Math.min(width, Sivage.CONFIG.game.maxSize) * 128;
     }
 
     public int getHeight() {
         int height = (int) height();
-        return Math.min(height, ImageItem.MAX_SIZE) * 128;
+        return Math.min(height, Sivage.CONFIG.game.maxSize) * 128;
     }
 }
