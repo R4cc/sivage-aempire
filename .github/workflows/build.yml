@@ -33,6 +33,9 @@ jobs:
         working-directory: src/main/rust
         run: cargo build --target wasm32-unknown-unknown --release --lib
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
       - name: Build jar
         run: ./gradlew build
 
