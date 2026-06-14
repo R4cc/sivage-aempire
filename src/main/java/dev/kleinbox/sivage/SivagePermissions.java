@@ -12,6 +12,7 @@ public class SivagePermissions {
     public static final String EDIT = "sivage.edit";
     public static final String REMOVE = "sivage.remove";
     public static final String CHECK = "sivage.check";
+    public static final String LIMIT_BYPASS = "sivage.limit.bypass";
     public static final String ADMIN = "sivage.admin";
 
     public static final Component CREATE_DENIED = Component.translatableWithFallback(
@@ -52,6 +53,10 @@ public class SivagePermissions {
         }
 
         return has(source, CHECK);
+    }
+
+    public static boolean canBypassImageLimit(ServerPlayer player) {
+        return has(player, LIMIT_BYPASS);
     }
 
     private static boolean has(ServerPlayer player, String permission) {

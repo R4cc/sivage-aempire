@@ -10,7 +10,7 @@ public record ImageMetaData(String url, float width, float height, boolean stret
                 Codec.FLOAT.fieldOf("width").forGetter(ImageMetaData::width),
                 Codec.FLOAT.fieldOf("height").forGetter(ImageMetaData::height),
                 Codec.BOOL.fieldOf("stretch").forGetter(ImageMetaData::stretch),
-                Codec.BOOL.fieldOf("transparent").forGetter(ImageMetaData::transparent),
+                Codec.BOOL.optionalFieldOf("transparent", false).forGetter(ImageMetaData::transparent),
                 Codec.BOOL.fieldOf("dithering").forGetter(ImageMetaData::dithering),
                 Codec.BOOL.fieldOf("nearestNeighbor").forGetter(ImageMetaData::nearestNeighbor)
         ).apply(instance, ImageMetaData::new)

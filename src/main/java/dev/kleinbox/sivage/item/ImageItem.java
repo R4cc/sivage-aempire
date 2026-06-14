@@ -19,8 +19,10 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -49,11 +51,17 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URL;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -76,12 +84,21 @@ public class ImageItem {
                     Codec.STRING.fieldOf("url").forGetter(Pair::getSecond)
             ).apply(instance, Pair::new)
     ));
+    public static final AttachmentType<@NotNull Long> CREATED_AT_TYPE = AttachmentRegistry.createPersistent(Sivage.of("created_at"), Codec.LONG);
     public static final String IS_CUSTOM_IMAGE_TYPE = "custom_image";
-    public static final int MAX_SIZE = 8;
+    public static final int MAX_SIZE = 4;
+    public static final int MAX_IMAGES_PER_PLAYER = 16;
+    private static final DateTimeFormatter CREATED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
     private static final HashMap<UUID, CompletableFuture<Void>> RUNNING = new HashMap<>();
+    private static final HashMap<UUID, Integer> PENDING_IMAGE_CREATIONS = new HashMap<>();
 
     public static final MutableComponent LIMIT_REACHED_MSG = Component.translatableWithFallback("sivage.hud.limit_reached", "Please wait for the previous image to finish generating.");
+    public static final MutableComponent IMAGE_LIMIT_REACHED_MSG = Component.translatableWithFallback(
+            "sivage.hud.image_limit_reached",
+            "You can only have %s Sivage images placed at a time.",
+            MAX_IMAGES_PER_PLAYER
+    );
 
     public static boolean isStillGenerating(UUID uuid) {
         if (!Sivage.CONFIG.game.playerLimit) return false;
@@ -149,6 +166,11 @@ public class ImageItem {
         } else if (itemKind instanceof InkSacItem && (frame instanceof GlowItemFrame)) {
             glow = false;
         } else {
+            if (player instanceof ServerPlayer serverPlayer) {
+                sendImageInfo(serverPlayer, serverLevel, frame);
+                return InteractionResult.SUCCESS;
+            }
+
             return InteractionResult.FAIL;
         }
 
@@ -163,6 +185,7 @@ public class ImageItem {
 
         String uuid = frame.getAttachedOrThrow(ID_TYPE);
         Pair<String, String> signature = frame.getAttachedOrThrow(SIGNATURE_TYPE);
+        @Nullable Long createdAt = frame.getAttached(CREATED_AT_TYPE);
         AtomicInteger size = new AtomicInteger();
         forWholeImage(serverLevel, frame, (framePart) -> {
             ItemStack subMap = framePart.getItem().copy();
@@ -172,7 +195,7 @@ public class ImageItem {
 
             framePart.kill(serverLevel);
 
-            ItemFrame newFramePart = createFramedImage(serverLevel, signature.getFirst(), signature.getSecond(), pos, facing, subMap, uuid, transparent, glow);
+            ItemFrame newFramePart = createFramedImage(serverLevel, signature.getFirst(), signature.getSecond(), createdAt == null ? 0L : createdAt, pos, facing, subMap, uuid, transparent, glow);
             serverLevel.gameEvent(player, GameEvent.ENTITY_PLACE, newFramePart.position());
             serverLevel.addFreshEntity(newFramePart);
 
@@ -198,7 +221,16 @@ public class ImageItem {
         if (!(id.equals(PAYLOAD_ID) && result.isSuccess()))
             return false; // Not our payload
 
-        ImageMetaData metadata = result.getOrThrow();
+        ImageMetaData submittedMetadata = result.getOrThrow();
+        ImageMetaData metadata = new ImageMetaData(
+                submittedMetadata.url(),
+                submittedMetadata.width(),
+                submittedMetadata.height(),
+                submittedMetadata.stretch(),
+                false,
+                submittedMetadata.dithering(),
+                submittedMetadata.nearestNeighbor()
+        );
         ServerLevel level = player.level();
 
         if (!SivagePermissions.canCreate(player)) {
@@ -222,6 +254,14 @@ public class ImageItem {
         }
         BlockHitResult blockHitResult = (BlockHitResult) hitResult;
 
+        Optional<Boolean> imageSlotReservation = reserveImageSlot(player);
+        if (imageSlotReservation.isEmpty()) {
+            player.sendOverlayMessage(IMAGE_LIMIT_REACHED_MSG);
+            ImageDialogs.close(player);
+            return false;
+        }
+        boolean imageSlotReserved = imageSlotReservation.get();
+
         // Consume item
 
         if (!player.isCreative()) {
@@ -239,6 +279,7 @@ public class ImageItem {
             }
 
             if (consumed.isEmpty()) {
+                if (imageSlotReserved) releaseImageSlot(player.getUUID());
                 ImageDialogs.close(player); // No item to consume
                 return false;
             }
@@ -246,13 +287,23 @@ public class ImageItem {
 
         // Start preparing image
 
+        AtomicBoolean placementScheduled = new AtomicBoolean(false);
         handleImageRequest(level, player, blockHitResult, () -> prepareImage(metadata, level, player, blockHitResult,
-                (maps) -> level.getServer().execute(() -> placeImage(player, level, blockHitResult, maps, metadata))));
+                (maps) -> {
+                    placementScheduled.set(true);
+                    level.getServer().execute(() -> {
+                        try {
+                            placeImage(player, level, blockHitResult, maps, metadata);
+                        } finally {
+                            if (imageSlotReserved) releaseImageSlot(player.getUUID());
+                        }
+                    });
+                }), imageSlotReserved, placementScheduled);
 
         return true;
     }
 
-    private static void handleImageRequest(ServerLevel level, ServerPlayer player, BlockHitResult blockHitResult, Runnable runnable) {
+    private static void handleImageRequest(ServerLevel level, ServerPlayer player, BlockHitResult blockHitResult, Runnable runnable, boolean imageSlotReserved, AtomicBoolean placementScheduled) {
         CompletableFuture<Void> task = CompletableFuture.runAsync(
                 () -> {
                     try {
@@ -268,6 +319,9 @@ public class ImageItem {
                         ImageDialogs.EXCEPTION.open(level, player);
                     } finally {
                         RUNNING.remove(player.getUUID());
+                        if (imageSlotReserved && !placementScheduled.get()) {
+                            releaseImageSlot(player.getUUID());
+                        }
                     }
                 },
                 Util.backgroundExecutor()
@@ -332,11 +386,12 @@ public class ImageItem {
 
         int height = maps.length;
         int width = maps[0].length;
+        long createdAt = System.currentTimeMillis();
 
         for (int y=0; y<height; y++) {
             for (int x=0; x<width; x++) {
                 BlockPos curPos = offsetOnPainting(blockpos, facing, -x, y);
-                ItemFrame itemFrame = createFramedImage(level, player.getStringUUID(), metadata.url(), curPos, facing, maps[maps.length-1-y][x], uuid, metadata.transparent(), false);
+                ItemFrame itemFrame = createFramedImage(level, player.getStringUUID(), metadata.url(), createdAt, curPos, facing, maps[maps.length-1-y][x], uuid, metadata.transparent(), false);
 
                 // Place Frame in world
 
@@ -391,7 +446,7 @@ public class ImageItem {
         void apply(ItemFrame frame);
     }
 
-    private static ItemFrame createFramedImage(ServerLevel level, String player, String url, BlockPos curPos, Direction facing, ItemStack map, String uuid, boolean transparent, boolean glow) {
+    private static ItemFrame createFramedImage(ServerLevel level, String player, String url, long createdAt, BlockPos curPos, Direction facing, ItemStack map, String uuid, boolean transparent, boolean glow) {
         ItemFrame itemFrame;
         if (glow) {
             itemFrame = new GlowItemFrame(level, curPos, facing);
@@ -404,6 +459,7 @@ public class ImageItem {
         itemFrame.setItem(map);
         itemFrame.setAttached(ID_TYPE, uuid);
         itemFrame.setAttached(SIGNATURE_TYPE, Pair.of(player, url));
+        itemFrame.setAttached(CREATED_AT_TYPE, createdAt);
 
         return itemFrame;
     }
@@ -483,6 +539,105 @@ public class ImageItem {
         ItemEntity itemEntity = new ItemEntity(level, pos.x, pos.y, pos.z, stack);
         itemEntity.setDefaultPickUpDelay();
         level.addFreshEntity(itemEntity);
+    }
+
+    private static void sendImageInfo(ServerPlayer viewer, ServerLevel level, ItemFrame frame) {
+        @Nullable Pair<String, String> signature = frame.getAttached(SIGNATURE_TYPE);
+        if (signature == null) {
+            return;
+        }
+
+        Component creatorName;
+        try {
+            Player creator = level.getPlayerInAnyDimension(UUID.fromString(signature.getFirst()));
+            creatorName = creator == null
+                    ? Component.translatableWithFallback("sivage.chat.signature.unknown", "[Unknown]")
+                    : creator.getDisplayName();
+        } catch (IllegalArgumentException ignored) {
+            creatorName = Component.translatableWithFallback("sivage.chat.signature.unknown", "[Unknown]");
+        }
+
+        @Nullable Long createdAt = frame.getAttached(CREATED_AT_TYPE);
+        Component createdAtText = createdAt == null || createdAt <= 0
+                ? Component.translatableWithFallback("sivage.chat.signature.unknown", "[Unknown]")
+                : Component.literal(CREATED_AT_FORMAT.format(Instant.ofEpochMilli(createdAt))).withStyle(ChatFormatting.YELLOW);
+
+        MutableComponent info = Component.empty()
+                .append(Component.translatableWithFallback(
+                        "sivage.chat.signature.info.header",
+                        "Custom Image Info"
+                ).withStyle(ChatFormatting.GOLD))
+                .append(Component.literal("\n"))
+                .append(Component.translatableWithFallback(
+                        "sivage.chat.signature.url",
+                        " - URL: %s",
+                        Component.literal(signature.getSecond()).withStyle(Style.EMPTY.withColor(ChatFormatting.BLUE).withUnderlined(true))
+                ).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("\n"))
+                .append(Component.translatableWithFallback(
+                        "sivage.chat.signature.created_at",
+                        " - Created at: %s",
+                        createdAtText
+                ).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("\n"))
+                .append(Component.translatableWithFallback(
+                        "sivage.chat.signature.creator",
+                        " - Created by: %s",
+                        Component.empty().append(creatorName).withStyle(ChatFormatting.AQUA)
+                ).withStyle(ChatFormatting.GRAY));
+
+        viewer.sendSystemMessage(info);
+    }
+
+    private static Optional<Boolean> reserveImageSlot(ServerPlayer player) {
+        if (SivagePermissions.canBypassImageLimit(player))
+            return Optional.of(false);
+
+        synchronized (PENDING_IMAGE_CREATIONS) {
+            UUID playerId = player.getUUID();
+            int activeImages = countOwnedImages(player);
+            int pendingImages = PENDING_IMAGE_CREATIONS.getOrDefault(playerId, 0);
+
+            if (activeImages + pendingImages >= MAX_IMAGES_PER_PLAYER)
+                return Optional.empty();
+
+            PENDING_IMAGE_CREATIONS.put(playerId, pendingImages + 1);
+            return Optional.of(true);
+        }
+    }
+
+    private static void releaseImageSlot(UUID playerId) {
+        synchronized (PENDING_IMAGE_CREATIONS) {
+            int pendingImages = PENDING_IMAGE_CREATIONS.getOrDefault(playerId, 0);
+            if (pendingImages <= 1) {
+                PENDING_IMAGE_CREATIONS.remove(playerId);
+            } else {
+                PENDING_IMAGE_CREATIONS.put(playerId, pendingImages - 1);
+            }
+        }
+    }
+
+    private static int countOwnedImages(ServerPlayer player) {
+        MinecraftServer server = player.level().getServer();
+        if (server == null)
+            return 0;
+
+        String playerId = player.getStringUUID();
+        Set<UUID> imageIds = new HashSet<>();
+
+        for (ServerLevel level : server.getAllLevels()) {
+            for (Entity entity : level.getAllEntities()) {
+                if (!(entity instanceof ItemFrame frame) || !frame.hasAttached(ID_TYPE) || !frame.hasAttached(SIGNATURE_TYPE))
+                    continue;
+
+                Pair<String, String> signature = frame.getAttachedOrThrow(SIGNATURE_TYPE);
+                if (playerId.equals(signature.getFirst())) {
+                    imageIds.add(UUID.fromString(frame.getAttachedOrThrow(ID_TYPE)));
+                }
+            }
+        }
+
+        return imageIds.size();
     }
 
     private static void playSound(ServerLevel level, int size, BlockPos blockpos, SoundEvent sound) {

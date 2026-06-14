@@ -1,6 +1,7 @@
 {
     "item.sivage.custom_image": "Angepasstes Bild",
     "sivage.hud.limit_reached": "Ein vorheriges Bild ist noch nicht vollständig generiert.",
+    "sivage.hud.image_limit_reached": "Du kannst nur %s Sivage-Bilder gleichzeitig platzieren.",
     "sivage.chat.permission.create": "Du hast keine Berechtigung, Sivage-Bilder zu erstellen.",
     "sivage.chat.permission.edit": "Du hast keine Berechtigung, Sivage-Bilder zu bearbeiten.",
     "sivage.chat.permission.remove": "Du hast keine Berechtigung, Sivage-Bilder zu entfernen.",
@@ -9,8 +10,10 @@
     "sivage.chat.signature.error.data": "Daten des Angepasstes Bild scheinen falsch zu sein",
     "sivage.chat.signature.unknown": "[Unbekannt]",
     "sivage.chat.signature.header": "Angepasstes Bild bei [%s] hat folgende Signatur:",
+    "sivage.chat.signature.info.header": "Info zum Angepassten Bild",
     "sivage.chat.signature.uuid": " - UUID: %s",
     "sivage.chat.signature.url": " - URL: %s",
+    "sivage.chat.signature.created_at": " - Erstellt am: %s",
     "sivage.chat.signature.creator": " - Erstellt von: %s",
     "sivage.chat.signature.link": "Link zur Quelle des Bild",
     "sivage.chat.item.single": "Angepasstes Bild gegeben",

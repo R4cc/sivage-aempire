@@ -1,6 +1,7 @@
 {
     "item.sivage.custom_image": "Custom Image",
     "sivage.hud.limit_reached": "Please wait for the previous image to finish generating.",
+    "sivage.hud.image_limit_reached": "You can only have %s Sivage images placed at a time.",
     "sivage.chat.permission.create": "You do not have permission to create Sivage images.",
     "sivage.chat.permission.edit": "You do not have permission to edit Sivage images.",
     "sivage.chat.permission.remove": "You do not have permission to remove Sivage images.",
@@ -9,8 +10,10 @@
     "sivage.chat.signature.error.data": "Data of Custom Image seems invalid",
     "sivage.chat.signature.unknown": "[Unknown]",
     "sivage.chat.signature.header": "Custom Image at [%s] has the following signature:",
+    "sivage.chat.signature.info.header": "Custom Image Info",
     "sivage.chat.signature.uuid": " - UUID: %s",
     "sivage.chat.signature.url": " - URL: %s",
+    "sivage.chat.signature.created_at": " - Created at: %s",
     "sivage.chat.signature.creator": " - Created by: %s",
     "sivage.chat.signature.link": "Link to source image",
     "sivage.chat.item.single": "Gave Custom Image item",

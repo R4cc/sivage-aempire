@@ -50,7 +50,7 @@
       },
       "label_format": "%2$s %1$s",
       "start": 1,
-      "end": 8,
+      "end": 4,
       "step": 1,
       "initial": 2
     },
@@ -64,7 +64,7 @@
       },
       "label_format": "%2$s %1$s",
       "start": 1,
-      "end": 8,
+      "end": 4,
       "step": 1,
       "initial": 1
     },
@@ -74,15 +74,6 @@
       "label": {
         "translate": "sivage.dialog.new.checkbox.stretch",
         "fallback": "Stretch Image to Aspect-Ratio"
-      },
-      "initial": false
-    },
-    {
-      "type": "minecraft:boolean",
-      "key": "transparent",
-      "label": {
-        "translate": "sivage.dialog.new.checkbox.invisible",
-        "fallback": "Invisible Frame"
       },
       "initial": false
     },
