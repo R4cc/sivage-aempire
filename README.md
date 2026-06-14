@@ -70,6 +70,19 @@ The image count limit counts each Sivage image once regardless of its block size
 
 > **Note** Both the white- and blacklist allow the usage of wildcards; To be more specific, `*` for everything and `*.example.com` for subdomain wildcards. IP Addresses and protocols not following HTTP(S) will always be rejected.
 
+## Commands
+
+Sivage provides a few server-side commands for admins:
+
+- `/sivage item` gives yourself a Custom Image item.
+- `/sivage item <for>` gives Custom Image items to one or more players.
+- `/sivage check <image>` shows signature information for a specific Sivage image entity.
+- `/sivage images list` lists all placed Sivage images with their image UUID, dimension, coordinates, owner UUID, and frame count.
+- `/sivage images list <user>` lists placed Sivage images owned by a specific user.
+- `/sivage images delete <user>` deletes all placed Sivage images owned by a specific user.
+
+For the image list and delete commands, `<user>` may be an online player name or a UUID. These image management commands require gamemaster/admin command permission.
+
 ## Development
 
 In order for this mod to work with as many formats as possible on any JVM, the image processing part has been written in Rust and is being run with WebAssembly that has been compiled to java bytecode.

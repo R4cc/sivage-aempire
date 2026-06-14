@@ -2,6 +2,7 @@ package dev.kleinbox.sivage;
 
 import dev.kleinbox.sivage.command.CheckSignatureCommand;
 import dev.kleinbox.sivage.command.GetItemCommand;
+import dev.kleinbox.sivage.command.ImageAdminCommand;
 import dev.kleinbox.sivage.item.ImageItem;
 import dev.kleinbox.sivage.packet.C2SCustomActionEvent;
 import net.fabricmc.api.ModInitializer;
@@ -51,6 +52,18 @@ public class Sivage implements ModInitializer {
                             .then(Commands.argument("for", EntityArgument.players())
                                     .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                     .executes(GetItemCommand::executeGetItemForMany))
+                    )
+                    .then(Commands.literal("images")
+                            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                            .then(Commands.literal("list")
+                                    .executes(ImageAdminCommand::executeListAll)
+                                    .then(Commands.argument("user", ImageAdminCommand.userArgument())
+                                            .executes(ImageAdminCommand::executeListForUser))
+                            )
+                            .then(Commands.literal("delete")
+                                    .then(Commands.argument("user", ImageAdminCommand.userArgument())
+                                            .executes(ImageAdminCommand::executeDeleteForUser))
+                            )
                     )
             );
 

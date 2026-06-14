@@ -121,7 +121,7 @@ public class ImageAdminCommand {
                     "sivage.chat.images.list.entry",
                     " - %s in %s at %s, owner %s, %s frame(s)",
                     image.imageId.toString(),
-                    image.level.dimension().location().toString(),
+                    image.level.dimension().toString(),
                     image.bounds(),
                     image.signature.getFirst(),
                     image.frames.size()
@@ -149,7 +149,7 @@ public class ImageAdminCommand {
         }
 
         for (ServerPlayer player : context.getSource().getServer().getPlayerList().getPlayers()) {
-            if (player.getGameProfile().getName().equalsIgnoreCase(user))
+            if (player.getPlainTextName().equalsIgnoreCase(user))
                 return player.getStringUUID();
         }
 
