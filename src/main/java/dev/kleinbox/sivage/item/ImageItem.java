@@ -328,7 +328,7 @@ public class ImageItem {
     private static void refund(ServerLevel level, BlockHitResult blockHitResult) {
         level.getServer().execute(() -> {
             Direction facing = blockHitResult.getDirection();
-            Vec3 centeredPos = blockHitResult.getBlockPos().relative(facing).getCenter();
+            Vec3 centeredPos = Vec3.atCenterOf(blockHitResult.getBlockPos().relative(facing));
 
             ItemStack deposit = getDefaultConsumable(level);
             dropItemAt(level, deposit, centeredPos);
