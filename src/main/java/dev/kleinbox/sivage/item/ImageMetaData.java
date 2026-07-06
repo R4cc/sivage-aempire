@@ -18,12 +18,24 @@ public record ImageMetaData(String url, float width, float height, boolean stret
     );
 
     public int getWidth() {
-        int width = (int) width();
-        return Math.min(width, Sivage.CONFIG.game.maxSize) * 128;
+        return getBlockWidth() * 128;
     }
 
     public int getHeight() {
-        int height = (int) height();
-        return Math.min(height, Sivage.CONFIG.game.maxSize) * 128;
+        return getBlockHeight() * 128;
+    }
+
+    public int getBlockWidth() {
+        return clampBlockSize(width());
+    }
+
+    public int getBlockHeight() {
+        return clampBlockSize(height());
+    }
+
+    private static int clampBlockSize(float size) {
+        int maxSize = Sivage.CONFIG.game.maxSize;
+        int blockSize = (int) size;
+        return Math.clamp(blockSize, 1, maxSize);
     }
 }
