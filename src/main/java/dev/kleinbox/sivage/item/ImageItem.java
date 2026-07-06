@@ -218,8 +218,8 @@ public class ImageItem {
         ImageMetaData submittedMetadata = result.getOrThrow();
         ImageMetaData metadata = new ImageMetaData(
                 submittedMetadata.url(),
-                submittedMetadata.width(),
-                submittedMetadata.height(),
+                submittedMetadata.getBlockWidth(),
+                submittedMetadata.getBlockHeight(),
                 submittedMetadata.stretch(),
                 Sivage.CONFIG.game.invisibleFrames,
                 submittedMetadata.dithering(),
