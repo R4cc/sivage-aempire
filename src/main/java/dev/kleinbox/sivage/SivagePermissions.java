@@ -1,6 +1,7 @@
 package dev.kleinbox.sivage;
 
 import me.lucko.fabric.api.permissions.v0.Permissions;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.permissions.PermissionLevel;
@@ -16,6 +17,7 @@ public class SivagePermissions {
     public static final String COMMAND_IMAGES_LIST = "sivage.command.images.list";
     public static final String COMMAND_IMAGES_DELETE = "sivage.command.images.delete";
     public static final String LIMIT_BYPASS = "sivage.limit.bypass";
+    public static final String MAX_IMAGES_META_KEY = "sivage.max-images";
     public static final String ADMIN = "sivage.admin";
 
     public static final Component CREATE_DENIED = Component.translatableWithFallback(
@@ -72,6 +74,25 @@ public class SivagePermissions {
 
     public static boolean canBypassImageLimit(ServerPlayer player) {
         return has(player, LIMIT_BYPASS);
+    }
+
+    /**
+     * Gets the maximum number of placed images allowed for a player.
+     * LuckPerms metadata overrides the configured fallback when LuckPerms is installed.
+     * A value of {@code 0} means unlimited.
+     */
+    public static int getImageLimit(ServerPlayer player, int fallbackLimit) {
+        if (canBypassImageLimit(player))
+            return 0;
+
+        if (!FabricLoader.getInstance().isModLoaded("luckperms"))
+            return fallbackLimit;
+
+        try {
+            return LuckPermsImageLimits.get(player.getUUID(), MAX_IMAGES_META_KEY).orElse(fallbackLimit);
+        } catch (LinkageError ignored) {
+            return fallbackLimit;
+        }
     }
 
     private static boolean has(ServerPlayer player, String permission) {

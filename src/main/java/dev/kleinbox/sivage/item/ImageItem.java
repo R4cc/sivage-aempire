@@ -250,7 +250,7 @@ public class ImageItem {
 
         Optional<Boolean> imageSlotReservation = reserveImageSlot(player);
         if (imageSlotReservation.isEmpty()) {
-            player.sendOverlayMessage(getImageLimitReachedMessage());
+            player.sendOverlayMessage(getImageLimitReachedMessage(player));
             ImageDialogs.close(player);
             return false;
         }
@@ -584,8 +584,8 @@ public class ImageItem {
     }
 
     private static Optional<Boolean> reserveImageSlot(ServerPlayer player) {
-        int maxImagesPerPlayer = Sivage.CONFIG.game.maxImagesPerPlayer;
-        if (maxImagesPerPlayer <= 0 || SivagePermissions.canBypassImageLimit(player))
+        int maxImagesPerPlayer = SivagePermissions.getImageLimit(player, Sivage.CONFIG.game.maxImagesPerPlayer);
+        if (maxImagesPerPlayer <= 0)
             return Optional.of(false);
 
         synchronized (PENDING_IMAGE_CREATIONS) {
@@ -641,11 +641,11 @@ public class ImageItem {
         level.playSound(null, blockpos, sound, SoundSource.BLOCKS, 1f, pitch);
     }
 
-    private static MutableComponent getImageLimitReachedMessage() {
+    private static MutableComponent getImageLimitReachedMessage(ServerPlayer player) {
         return Component.translatableWithFallback(
                 "sivage.hud.image_limit_reached",
                 "You can only have %s Sivage images placed at a time.",
-                Sivage.CONFIG.game.maxImagesPerPlayer
+                SivagePermissions.getImageLimit(player, Sivage.CONFIG.game.maxImagesPerPlayer)
         );
     }
 }

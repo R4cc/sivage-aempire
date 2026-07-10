@@ -68,6 +68,17 @@ maxImagesPerPlayer = 16
 
 The image count limit counts each Sivage image once regardless of its block size, and removing an image frees that slot again. To disable this cap for a LuckPerms group or player, grant `sivage.limit.bypass`.
 
+### LuckPerms role limits
+
+When [LuckPerms](https://luckperms.net/) is installed, a player's inherited `sivage.max-images` metadata value overrides `game.maxImagesPerPlayer`. Set the metadata on a group (or directly on a player) to choose its cap:
+
+```
+/lp group vip meta set sivage.max-images 25
+/lp group member meta set sivage.max-images 5
+```
+
+Use `0` for unlimited images. If LuckPerms is not installed, no metadata value is set, or the value is invalid or negative, Sivage uses `game.maxImagesPerPlayer` instead. LuckPerms' normal inheritance and meta-priority rules select the effective value when a player belongs to multiple groups.
+
 > **Note** Both the white- and blacklist allow the usage of wildcards; To be more specific, `*` for everything and `*.example.com` for subdomain wildcards. IP Addresses and protocols not following HTTP(S) will always be rejected.
 
 ## Commands
