@@ -81,7 +81,13 @@ Sivage provides a few server-side commands for admins:
 - `/sivage images list <user>` lists placed Sivage images owned by a specific user.
 - `/sivage images delete <user>` deletes all placed Sivage images owned by a specific user.
 
-For the image list and delete commands, `<user>` may be an online player name or a UUID. These image management commands require gamemaster/admin command permission.
+For the image list and delete commands, `<user>` may be an online player name or a UUID. Command access can be granted with these permission nodes (and `sivage.admin` grants all of them):
+
+- `sivage.command.item` for `/sivage item` and `/sivage item <for>`.
+- `sivage.command.images.list` for `/sivage images list [user]`.
+- `sivage.command.images.delete` for `/sivage images delete <user>`.
+
+Operators retain access through the existing gamemaster fallback.
 
 ## Development
 

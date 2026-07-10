@@ -12,6 +12,9 @@ public class SivagePermissions {
     public static final String EDIT = "sivage.edit";
     public static final String REMOVE = "sivage.remove";
     public static final String CHECK = "sivage.check";
+    public static final String COMMAND_ITEM = "sivage.command.item";
+    public static final String COMMAND_IMAGES_LIST = "sivage.command.images.list";
+    public static final String COMMAND_IMAGES_DELETE = "sivage.command.images.delete";
     public static final String LIMIT_BYPASS = "sivage.limit.bypass";
     public static final String ADMIN = "sivage.admin";
 
@@ -53,6 +56,18 @@ public class SivagePermissions {
         }
 
         return has(source, CHECK);
+    }
+
+    public static boolean canUseItemCommand(CommandSourceStack source) {
+        return has(source, COMMAND_ITEM);
+    }
+
+    public static boolean canListImages(CommandSourceStack source) {
+        return has(source, COMMAND_IMAGES_LIST);
+    }
+
+    public static boolean canDeleteImages(CommandSourceStack source) {
+        return has(source, COMMAND_IMAGES_DELETE);
     }
 
     public static boolean canBypassImageLimit(ServerPlayer player) {
