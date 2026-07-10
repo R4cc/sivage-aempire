@@ -98,6 +98,8 @@ For the image list and delete commands, `<user>` may be an online player name or
 - `sivage.command.images.list` for `/sivage images list [user]`.
 - `sivage.command.images.delete` for `/sivage images delete <user>`.
 
+Players may always remove Sivage images they created themselves. Grant `sivage.remove` to moderators or LuckPerms groups that should be able to remove images created by anyone; `sivage.admin` and server operators also have this access.
+
 Operators retain access through the existing gamemaster fallback.
 
 ## Development

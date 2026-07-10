@@ -252,6 +252,9 @@ public class ImageItem {
         URL url;
         try {
             url = LinkVerifier.fromString(metadata.url());
+        } catch (LinkVerifier.BlockedLinkException e) {
+            ImageDialogs.openBlockedUrl(player, e);
+            return true;
         } catch (ImagePreparationException e) {
             e.getDialog().open(level, player);
             return true;
@@ -354,9 +357,14 @@ public class ImageItem {
         if (!(entity instanceof ItemFrame frame && frame.hasAttached(ID_TYPE)))
             return InteractionResult.PASS;
 
-        if (player instanceof ServerPlayer serverPlayer && !SivagePermissions.canRemove(serverPlayer)) {
-            serverPlayer.sendSystemMessage(SivagePermissions.REMOVE_DENIED);
-            return InteractionResult.FAIL;
+        if (player instanceof ServerPlayer serverPlayer) {
+            boolean isOwner = frame.hasAttached(SIGNATURE_TYPE)
+                    && serverPlayer.getStringUUID().equals(frame.getAttachedOrThrow(SIGNATURE_TYPE).getFirst());
+
+            if (!isOwner && !SivagePermissions.canRemoveAnyImage(serverPlayer)) {
+                serverPlayer.sendSystemMessage(SivagePermissions.REMOVE_DENIED);
+                return InteractionResult.FAIL;
+            }
         }
 
         destroyImage(player, (ServerLevel) level, frame);

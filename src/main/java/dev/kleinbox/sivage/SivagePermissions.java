@@ -30,7 +30,7 @@ public class SivagePermissions {
     );
     public static final Component REMOVE_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.remove",
-            "You do not have permission to remove Sivage images."
+            "You can only remove Sivage images you created."
     );
     public static final Component CHECK_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.check",
@@ -47,7 +47,7 @@ public class SivagePermissions {
         return has(player, EDIT);
     }
 
-    public static boolean canRemove(ServerPlayer player) {
+    public static boolean canRemoveAnyImage(ServerPlayer player) {
         return has(player, REMOVE);
     }
 
