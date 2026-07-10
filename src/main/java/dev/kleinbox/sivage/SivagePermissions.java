@@ -22,19 +22,19 @@ public class SivagePermissions {
 
     public static final Component CREATE_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.create",
-            "You do not have permission to create Sivage images."
+            "You do not have permission to create images."
     );
     public static final Component EDIT_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.edit",
-            "You do not have permission to edit Sivage images."
+            "You do not have permission to edit images."
     );
     public static final Component REMOVE_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.remove",
-            "You can only remove Sivage images you created."
+            "You can only remove images you created."
     );
     public static final Component CHECK_DENIED = Component.translatableWithFallback(
             "sivage.chat.permission.check",
-            "You do not have permission to inspect Sivage images."
+            "You do not have permission to inspect images."
     );
 
     private static final PermissionLevel OP_FALLBACK_LEVEL = PermissionLevel.GAMEMASTERS;
