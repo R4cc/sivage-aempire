@@ -98,7 +98,7 @@
   ],
   "can_close_with_escape": true,
   "pause": false,
-  "after_action": "wait_for_response",
+  "after_action": "close",
   "actions": [
     {
       "label": {
