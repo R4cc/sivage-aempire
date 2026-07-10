@@ -228,14 +228,15 @@ public class ImageItem {
         ServerLevel level = player.level();
 
         if (!SivagePermissions.canCreate(player)) {
-            player.sendSystemMessage(SivagePermissions.CREATE_DENIED);
             ImageDialogs.close(player);
+            player.sendSystemMessage(SivagePermissions.CREATE_DENIED);
             return true;
         }
 
         if (isStillGenerating(player.getUUID())) {
+            ImageDialogs.close(player);
             player.sendOverlayMessage(LIMIT_REACHED_MSG);
-            return false; // Player is still generating something
+            return true;
         }
 
         // Get block for frame to be placed
@@ -244,15 +245,23 @@ public class ImageItem {
         HitResult hitResult = player.pick(reach, 0f, false);
         if (hitResult.getType() != HitResult.Type.BLOCK) {
             ImageDialogs.close(player); // Not looking at block
-            return false;
+            return true;
         }
         BlockHitResult blockHitResult = (BlockHitResult) hitResult;
 
+        URL url;
+        try {
+            url = LinkVerifier.fromString(metadata.url());
+        } catch (ImagePreparationException e) {
+            e.getDialog().open(level, player);
+            return true;
+        }
+
         Optional<Boolean> imageSlotReservation = reserveImageSlot(player);
         if (imageSlotReservation.isEmpty()) {
-            player.sendOverlayMessage(getImageLimitReachedMessage(player));
             ImageDialogs.close(player);
-            return false;
+            player.sendOverlayMessage(getImageLimitReachedMessage(player));
+            return true;
         }
         boolean imageSlotReserved = imageSlotReservation.get();
 
@@ -275,14 +284,14 @@ public class ImageItem {
             if (consumed.isEmpty()) {
                 if (imageSlotReserved) releaseImageSlot(player.getUUID());
                 ImageDialogs.close(player); // No item to consume
-                return false;
+                return true;
             }
         }
 
         // Start preparing image
 
         AtomicBoolean placementScheduled = new AtomicBoolean(false);
-        handleImageRequest(level, player, blockHitResult, () -> prepareImage(metadata, level, player, blockHitResult,
+        handleImageRequest(level, player, blockHitResult, () -> prepareImage(url, metadata, level, player, blockHitResult,
                 (maps) -> {
                     placementScheduled.set(true);
                     level.getServer().execute(() -> {
@@ -359,12 +368,11 @@ public class ImageItem {
      * <p>Responsible for downloading, adjusting, splitting and placing down the image with feedback to the player</p>
      */
     @Blocking
-    private static void prepareImage(ImageMetaData metadata, ServerLevel level, ServerPlayer player, BlockHitResult ignoredBlockHitResult, WithFinishedMaps onSuccess) throws ImagePreparationException {
+    private static void prepareImage(URL url, ImageMetaData metadata, ServerLevel level, ServerPlayer player, BlockHitResult ignoredBlockHitResult, WithFinishedMaps onSuccess) throws ImagePreparationException {
         MinecraftServer server = level.getServer();
 
         ImageDialogs.PREPARE.open(level, player);
 
-        URL url = LinkVerifier.fromString(metadata.url());
         byte[] raw = ImageProvider.getRawImage(server, url);
         ItemStack[][] maps = ImageProvider.createMaps(level, raw, metadata);
 
