@@ -36,6 +36,16 @@ loom {
 
 }
 
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "sivage-gametest"
+        enableGameTests = true
+        enableClientGameTests = false
+        eula = true
+    }
+}
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -58,6 +68,15 @@ dependencies {
     implementation("com.dylibso.chicory:compiler:${project.chicory_version}")
     implementation(include("com.dylibso.chicory:runtime:${project.chicory_version}"))
     implementation(include("com.dylibso.chicory:wasm:${project.chicory_version}"))
+
+    // HTTP client used for DNS-pinned, redirect-aware image downloads.
+    implementation(include("com.squareup.okhttp3:okhttp-jvm:${project.okhttp_version}"))
+    implementation(include("com.squareup.okio:okio-jvm:${project.okio_version}"))
+    implementation(include("org.jetbrains.kotlin:kotlin-stdlib:${project.kotlin_stdlib_version}"))
+
+    testImplementation(platform("org.junit:junit-bom:${project.junit_version}"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 wasm2class {
@@ -73,6 +92,7 @@ wasm2class {
 
 processResources {
 	inputs.property "version", project.version
+	exclude "imaging.wasm" // The current module is compiled into RawImaging; never package the stale source artifact.
 
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version
@@ -81,6 +101,10 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 // Include debug information in build (for remote debugging in production)

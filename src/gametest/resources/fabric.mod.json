@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "sivage-gametest",
+  "version": "1.0.0",
+  "name": "Sivage Game Tests",
+  "environment": "server",
+  "entrypoints": {
+    "fabric-gametest": [
+      "dev.kleinbox.sivage.gametest.SivageGameTests"
+    ]
+  },
+  "depends": {
+    "fabricloader": "*",
+    "fabric-api": "*",
+    "sivage": "*"
+  }
+}

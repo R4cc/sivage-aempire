@@ -8,9 +8,11 @@ import dev.kleinbox.sivage.packet.C2SCustomActionEvent;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.resources.Identifier;
 import net.minecraft.commands.Commands;
@@ -32,7 +34,17 @@ public class Sivage implements ModInitializer {
         ServerEntityEvents.ENTITY_LOAD.register(ImageItem::onEntityLoad);
         C2SCustomActionEvent.ON_RECEIVE.register(ImageItem::onPlace);
         AttackEntityCallback.EVENT.register(ImageItem::onDestroy);
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ImageItem.onPlayerDisconnect(handler.player));
+        ServerLifecycleEvents.SERVER_STOPPING.register(ImageItem::onServerStopping);
         LOGGER.info("Registered events for Custom Images!");
+
+        if (CONFIG.network.fileSizeLimit != CONFIG.network.effectiveFileSizeLimit()) {
+            LOGGER.warn("Configured image file size limit {} is outside the safe range; downloads will be capped at {} bytes.",
+                    CONFIG.network.fileSizeLimit, CONFIG.network.effectiveFileSizeLimit());
+        }
+        if (!CONFIG.game.playerLimit) {
+            LOGGER.warn("game.playerLimit is deprecated and ignored; one active image request per player is always enforced.");
+        }
 
         //noinspection UnstableApiUsage
         LOGGER.info("Registered DataAttachment {}", ImageItem.ID_TYPE.identifier());

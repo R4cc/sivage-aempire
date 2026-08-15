@@ -1,6 +1,7 @@
 {
     "item.sivage.custom_image": "Custom Image",
     "sivage.hud.limit_reached": "Please wait for the previous image to finish generating.",
+    "sivage.hud.server_busy": "The image service is busy. Please try again shortly.",
     "sivage.hud.image_limit_reached": "You can only have %s Sivage images placed at a time.",
     "sivage.chat.permission.create": "You do not have permission to create images.",
     "sivage.chat.permission.edit": "You do not have permission to edit images.",

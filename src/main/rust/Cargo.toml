@@ -6,9 +6,5 @@ edition = "2024"
 [lib]
 crate-type = ["cdylib"]
 
-[dev-dependencies]
-tempfile = "3.23.0"
-opener = "0.8.3"
-
 [dependencies]
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "bmp", "ico", "qoi", "webp", "tiff", "ff", "hdr", "tga"] }

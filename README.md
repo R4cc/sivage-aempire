@@ -43,16 +43,20 @@ This mod comes with a TOML file on the server at `config/sivage/server.toml`, al
 whitelist = []
 # List of specifically disallowed domains or wildcards. Overruled by the whitelist.
 blacklist = ["localhost"]
-# Specifies the maximum size in bytes that images are allowed to have while downloading. (0 means infinite)
-# range: 0 - 2147483647
-# default: 500000000
-fileSizeLimit = 500000000
+# Maximum image download size in bytes. Values outside 1..50000000 are capped at 50000000.
+# range: 0 - 2147483647 (effective range: 1 - 50000000)
+# default: 50000000
+fileSizeLimit = 50000000
+# Maximum number of image downloads/conversions processed concurrently across the server.
+# range: 1 - 16
+# default: 4
+maxConcurrentRequests = 4
 
 # This represents aspects of this mod that only have an affect within the game.
 [game]
-# When enabled, each player may have only one image generated at a time.
-# default: false
-playerLimit = false
+# Deprecated compatibility key. One active image request per player is always enforced.
+# default: true
+playerLimit = true
 # Maximum width and height, in blocks, for newly created images.
 # range: 1 - 8
 # default: 4
@@ -79,7 +83,9 @@ When [LuckPerms](https://luckperms.net/) is installed, a player's inherited `siv
 
 Use `0` for unlimited images. If LuckPerms is not installed, no metadata value is set, or the value is invalid or negative, Sivage uses `game.maxImagesPerPlayer` instead. LuckPerms' normal inheritance and meta-priority rules select the effective value when a player belongs to multiple groups.
 
-> **Note** Both the white- and blacklist allow the usage of wildcards; To be more specific, `*` for everything and `*.example.com` for subdomain wildcards. IP Addresses and protocols not following HTTP(S) will always be rejected.
+> **Network safety:** Both lists support `*` and one-level subdomain wildcards such as `*.example.com`. Rules are case-insensitive, and wildcards do not match the apex or deeper levels. Literal addresses and hosts resolving to private, loopback, link-local, multicast, documentation, or other reserved networks are always rejected—even when whitelisted. Redirect destinations receive the same validation, HTTPS downgrades are rejected, and no more than five redirects are followed.
+
+Downloads have a 50 MB hard ceiling, a 60-second total timeout, bounded decoded dimensions/memory, one active request per player, and a bounded global worker pool. Downloads taking 15 seconds or longer are reported in the server log with their source, requester, duration, byte count, and outcome; players only receive the normal in-game failure dialog.
 
 ## Commands
 
@@ -123,6 +129,8 @@ Follow these steps in order to be setup and ready!
 automatically searches for the wasm file, when compiling the mod. **Otherwise, the Wasm2ClassTask task will fail**.
 
 From this point on, the mod can be compiled as usual through the gradle/build task!
+
+Before submitting changes, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, the release WASM build above, and `./gradlew build`.
 
 ***
 

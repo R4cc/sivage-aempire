@@ -3,6 +3,7 @@ package dev.kleinbox.sivage.image;
 import dev.kleinbox.sivage.Sivage;
 import dev.kleinbox.sivage.item.ImageMetaData;
 import dev.kleinbox.sivage.packet.ImageDialogs;
+import dev.kleinbox.sivage.packet.LinkVerifier;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -13,12 +14,30 @@ import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.Proxy;
+import java.net.URI;
 import java.net.URL;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Call;
+import okhttp3.Dns;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 public class ImageProvider {
+    private static final int MAX_REDIRECTS = 5;
+    private static final long SLOW_DOWNLOAD_MILLIS = 15_000L;
+    private static final long TOTAL_TIMEOUT_NANOS = TimeUnit.SECONDS.toNanos(60);
+
     /**
      * <p>Downloads from the specified url and attempts to return a map, if the response is valid.</p>
      *
@@ -27,50 +46,130 @@ public class ImageProvider {
      * @throws ImagePreparationException Whenever it fails to download the image.
      */
     public static byte[] getRawImage(MinecraftServer server, URL url) throws ImagePreparationException {
-        HttpURLConnection connection = null;
-        int maxBytes = Sivage.CONFIG.network.fileSizeLimit;
+        return getRawImage(server, url, "unknown player");
+    }
+
+    public static byte[] getRawImage(MinecraftServer server, URL url, String requester) throws ImagePreparationException {
+        return getRawImage(server.getProxy(), url, requester);
+    }
+
+    public static byte[] getRawImage(Proxy proxy, URL url, String requester) throws ImagePreparationException {
+        int maxBytes = Sivage.CONFIG.network.effectiveFileSizeLimit();
+
+        long startedAt = System.nanoTime();
+        long downloadedBytes = 0L;
+        URL current = url;
+        boolean succeeded = false;
 
         try {
-            connection = (HttpURLConnection) url.openConnection(server.getProxy());
-            connection.setDoInput(true);
-            connection.setConnectTimeout(10_000);
-            connection.setReadTimeout(10_000);
-            connection.connect();
+            PinnedDns pinnedDns = new PinnedDns();
+            OkHttpClient client = clientFor(proxy, pinnedDns);
+            for (int redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+                // Resolve once per hostname and make OkHttp use precisely that validated address set.
+                pinnedDns.pin(current.getHost());
+                Request request = new Request.Builder().url(current.toString()).get().build();
+                long remainingNanos = TOTAL_TIMEOUT_NANOS - (System.nanoTime() - startedAt);
+                if (remainingNanos <= 0)
+                    throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
+                Call call = client.newCall(request);
+                call.timeout().timeout(remainingNanos, TimeUnit.NANOSECONDS);
+                try (Response response = call.execute()) {
+                    if (isRedirect(response.code())) {
+                        if (redirects == MAX_REDIRECTS)
+                            throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
+                        String location = response.header("Location");
+                        if (location == null)
+                            throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
 
-            if (connection.getResponseCode() / 100 != 2)
-                throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
+                        URI redirected = current.toURI().resolve(location);
+                        if (current.getProtocol().equalsIgnoreCase("https")
+                                && !"https".equalsIgnoreCase(redirected.getScheme()))
+                            throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
+                        current = LinkVerifier.fromURI(redirected);
+                        continue;
+                    }
 
-            int contentLength = connection.getContentLength();
-            if (contentLength > maxBytes && maxBytes != 0 && contentLength != -1)
-                throw new ImagePreparationException(ImageDialogs.TOO_LARGE);
+                    if (!response.isSuccessful())
+                        throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
 
-            try (InputStream in = connection.getInputStream();
-                 ByteArrayOutputStream out = new ByteArrayOutputStream(
-                         Math.max(8192, Math.min(contentLength, maxBytes))
-                 )) {
-
-                byte[] buffer = new byte[8192];
-                int totalRead = 0;
-                int read;
-
-                while ((read = in.read(buffer)) != -1) {
-                    totalRead += read;
-
-                    if (totalRead > maxBytes && maxBytes != 0)
+                    ResponseBody body = response.body();
+                    long contentLength = body.contentLength();
+                    if (contentLength > maxBytes)
                         throw new ImagePreparationException(ImageDialogs.TOO_LARGE);
 
-                    out.write(buffer, 0, read);
+                    int initialSize = contentLength < 0
+                            ? 8_192
+                            : (int) Math.max(8_192L, Math.min(contentLength, maxBytes));
+                    try (InputStream in = body.byteStream();
+                         ByteArrayOutputStream out = new ByteArrayOutputStream(initialSize)) {
+                        byte[] buffer = new byte[8_192];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            downloadedBytes += read;
+                            if (downloadedBytes > maxBytes)
+                                throw new ImagePreparationException(ImageDialogs.TOO_LARGE);
+                            out.write(buffer, 0, read);
+                        }
+
+                        succeeded = true;
+                        return out.toByteArray();
+                    }
                 }
-
-                return out.toByteArray();
             }
-
-        } catch (IOException e) {
+            throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
+        } catch (ImagePreparationException e) {
+            throw e;
+        } catch (Exception e) {
             throw new ImagePreparationException(ImageDialogs.FAILED_LINK);
         } finally {
-            if (connection != null)
-                connection.disconnect();
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+            if (elapsedMillis >= SLOW_DOWNLOAD_MILLIS) {
+                Sivage.LOGGER.warn(
+                        "Image download from {} for {} took {} ms ({} bytes, {}).",
+                        safeUrl(current), requester, elapsedMillis, downloadedBytes, succeeded ? "completed" : "failed"
+                );
+            }
         }
+    }
+
+    private static OkHttpClient clientFor(Proxy proxy, Dns dns) {
+        return new OkHttpClient.Builder()
+                .proxy(proxy)
+                .dns(dns)
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .callTimeout(60, TimeUnit.SECONDS)
+                .build();
+    }
+
+    private static final class PinnedDns implements Dns {
+        private final Map<String, List<InetAddress>> resolved = new HashMap<>();
+
+        private synchronized List<InetAddress> pin(String hostname) throws UnknownHostException {
+            return lookup(hostname);
+        }
+
+        @Override
+        public synchronized List<InetAddress> lookup(String hostname) throws UnknownHostException {
+            String key = hostname.toLowerCase(Locale.ROOT);
+            List<InetAddress> addresses = resolved.get(key);
+            if (addresses == null) {
+                addresses = List.copyOf(LinkVerifier.resolvePublicHost(hostname));
+                resolved.put(key, addresses);
+            }
+            return addresses;
+        }
+    }
+
+    private static boolean isRedirect(int status) {
+        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+    }
+
+    private static String safeUrl(URL url) {
+        int port = url.getPort();
+        return url.getProtocol() + "://" + url.getHost() + (port == -1 ? "" : ":" + port) + url.getPath();
     }
 
     /**
@@ -79,10 +178,12 @@ public class ImageProvider {
      * @return A 2D map of in-game maps with the map images stored in level.
      * @throws ImagePreparationException Whenever it cannot parse the image.
      */
-    public static ItemStack[][] createMaps(ServerLevel level, byte[] raw, ImageMetaData metadata) throws ImagePreparationException {
-        ServerLevel savedLevel = getMapStoreLevel(level.getServer());
+    public static byte[] renderMapColors(byte[] raw, ImageMetaData metadata) throws ImagePreparationException {
+        return new Imaging().getMapArt(raw, metadata);
+    }
 
-        byte[] image = new Imaging().getMapArt(raw, metadata);
+    public static ItemStack[][] createMaps(ServerLevel level, byte[] image, ImageMetaData metadata) {
+        ServerLevel savedLevel = getMapStoreLevel(level.getServer());
 
         int width = metadata.getWidth(), height = metadata.getHeight();
         int mapsW = (int) Math.ceil(width / 128D);
@@ -128,6 +229,7 @@ public class ImageProvider {
      * flood the map IDs on the overworld and nether with our images.</p>
      */
     private static ServerLevel getMapStoreLevel(MinecraftServer server) {
-        return server.getLevel(Level.END);
+        ServerLevel end = server.getLevel(Level.END);
+        return end == null ? server.overworld() : end;
     }
 }

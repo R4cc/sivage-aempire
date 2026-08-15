@@ -87,12 +87,9 @@ public class ImageAdminCommand {
                 if (owner != null && !owner.equals(signature.getFirst()))
                     continue;
 
-                UUID imageId;
-                try {
-                    imageId = UUID.fromString(frame.getAttachedOrThrow(ImageItem.ID_TYPE));
-                } catch (IllegalArgumentException ignored) {
+                @Nullable UUID imageId = ImageItem.getImageId(frame);
+                if (imageId == null)
                     continue;
-                }
 
                 images.computeIfAbsent(imageId, (ignored) -> new ImageInfo(imageId, signature, level)).add(frame);
             }

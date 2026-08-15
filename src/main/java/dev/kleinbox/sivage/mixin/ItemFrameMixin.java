@@ -31,8 +31,15 @@ public abstract class ItemFrameMixin extends HangingEntity {
 
     @Inject(method = "hurtServer", at = @At("HEAD"), cancellable = true)
     private void usePaintingDamageBehavior(ServerLevel level, DamageSource damageSource, float amount, CallbackInfoReturnable<Boolean> cir) {
-        if (this.hasAttached(ImageItem.ID_TYPE))
-            cir.setReturnValue(super.hurtServer(level, damageSource, amount));
+        if (!this.hasAttached(ImageItem.ID_TYPE))
+            return;
+
+        ItemFrame frame = (ItemFrame) (Object) this;
+        if (!ImageItem.canDamageImage(frame, damageSource)) {
+            cir.setReturnValue(false);
+            return;
+        }
+        cir.setReturnValue(super.hurtServer(level, damageSource, amount));
     }
 
     @Inject(method = "dropItem(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"), cancellable = true)

@@ -8,6 +8,7 @@ import dev.kleinbox.sivage.Sivage;
 import dev.kleinbox.sivage.SivagePermissions;
 import dev.kleinbox.sivage.image.ImagePreparationException;
 import dev.kleinbox.sivage.image.ImageProvider;
+import dev.kleinbox.sivage.image.ImageRequestCoordinator;
 import dev.kleinbox.sivage.packet.ImageDialogs;
 import dev.kleinbox.sivage.packet.LinkVerifier;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
@@ -31,10 +32,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Util;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.TraceableEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.decoration.GlowItemFrame;
 import net.minecraft.world.entity.decoration.ItemFrame;
@@ -47,11 +49,11 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.*;
-import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URL;
+import java.net.Proxy;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -61,9 +63,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * <p>Represents the server side™ <i>Custom Image</i> item.</p>
@@ -90,19 +92,22 @@ public class ImageItem {
     public static final int MAX_SUPPORTED_SIZE = 8;
     private static final DateTimeFormatter CREATED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault());
 
-    private static final HashMap<UUID, CompletableFuture<Void>> RUNNING = new HashMap<>();
+    private static ImageRequestCoordinator requestCoordinator =
+            new ImageRequestCoordinator(Sivage.CONFIG.network.maxConcurrentRequests);
+    private static final HashMap<UUID, RequestState> REQUESTS = new HashMap<>();
     private static final HashMap<UUID, Integer> PENDING_IMAGE_CREATIONS = new HashMap<>();
 
     public static final MutableComponent LIMIT_REACHED_MSG = Component.translatableWithFallback("sivage.hud.limit_reached", "Please wait for the previous image to finish generating.");
+    public static final MutableComponent SERVER_BUSY_MSG = Component.translatableWithFallback("sivage.hud.server_busy", "The image service is busy. Please try again shortly.");
 
     public static boolean isStillGenerating(UUID uuid) {
-        if (!Sivage.CONFIG.game.playerLimit) return false;
+        return coordinator().isActive(uuid);
+    }
 
-        @Nullable CompletableFuture<Void> task = RUNNING.get(uuid);
-        if (task == null) return false;
-
-        if (task.isDone()) RUNNING.remove(uuid);
-        return !task.isDone();
+    private static ImageRequestCoordinator coordinator() {
+        if (requestCoordinator.isShutdown())
+            requestCoordinator = new ImageRequestCoordinator(Sivage.CONFIG.network.maxConcurrentRequests);
+        return requestCoordinator;
     }
 
     /**
@@ -175,11 +180,17 @@ public class ImageItem {
             return InteractionResult.FAIL;
         }
 
+        @Nullable UUID imageId = getImageId(frame);
+        @Nullable Pair<String, String> signature = frame.getAttached(SIGNATURE_TYPE);
+        if (imageId == null || signature == null) {
+            Sivage.LOGGER.warn("Ignoring edit request for Sivage frame {} with malformed metadata.", frame.getUUID());
+            return InteractionResult.FAIL;
+        }
+
         if (!player.isCreative())
             item.consume(1, null);
 
-        String uuid = frame.getAttachedOrThrow(ID_TYPE);
-        Pair<String, String> signature = frame.getAttachedOrThrow(SIGNATURE_TYPE);
+        String uuid = imageId.toString();
         @Nullable Long createdAt = frame.getAttached(CREATED_AT_TYPE);
         AtomicInteger size = new AtomicInteger();
         forWholeImage(serverLevel, frame, (framePart) -> {
@@ -277,11 +288,28 @@ public class ImageItem {
         }
         boolean imageSlotReserved = imageSlotReservation.get();
 
-        // Consume item
+        CountDownLatch requestReady = new CountDownLatch(1);
+        AtomicReference<RequestState> acceptedRequest = new AtomicReference<>();
+        boolean submitted = coordinator().submit(player.getUUID(), () -> {
+            try {
+                requestReady.await();
+                RequestState request = acceptedRequest.get();
+                if (request != null)
+                    prepareImage(request);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        if (!submitted) {
+            if (imageSlotReserved)
+                releaseImageSlot(player.getUUID());
+            ImageDialogs.close(player);
+            player.sendOverlayMessage(SERVER_BUSY_MSG);
+            return true;
+        }
 
+        ItemStack consumed = ItemStack.EMPTY;
         if (!player.isCreative()) {
-            ItemStack consumed = ItemStack.EMPTY;
-
             for (InteractionHand hand : InteractionHand.values()) {
                 if (isHoldingItem(player, hand)) {
                     ItemStack handItem = player.getItemInHand(hand);
@@ -294,66 +322,44 @@ public class ImageItem {
             }
 
             if (consumed.isEmpty()) {
+                coordinator().cancel(player.getUUID());
+                requestReady.countDown();
                 if (imageSlotReserved) releaseImageSlot(player.getUUID());
                 ImageDialogs.close(player); // No item to consume
                 return true;
             }
         }
 
-        // Start preparing image
+        Proxy proxy = level.getServer().getProxy();
+        RequestState request = new RequestState(
+                player,
+                level,
+                blockHitResult,
+                metadata,
+                url,
+                proxy,
+                consumed,
+                imageSlotReserved
+        );
+        REQUESTS.put(player.getUUID(), request);
+        acceptedRequest.set(request);
+        requestReady.countDown();
 
-        AtomicBoolean placementScheduled = new AtomicBoolean(false);
-        handleImageRequest(level, player, blockHitResult, () -> prepareImage(url, metadata, level, player, blockHitResult,
-                (maps) -> {
-                    placementScheduled.set(true);
-                    level.getServer().execute(() -> {
-                        try {
-                            placeImage(player, level, blockHitResult, maps, metadata);
-                        } finally {
-                            if (imageSlotReserved) releaseImageSlot(player.getUUID());
-                        }
-                    });
-                }), imageSlotReserved, placementScheduled);
+        ImageDialogs.PREPARE.open(level, player);
 
         return true;
     }
 
-    private static void handleImageRequest(ServerLevel level, ServerPlayer player, BlockHitResult blockHitResult, Runnable runnable, boolean imageSlotReserved, AtomicBoolean placementScheduled) {
-        CompletableFuture<Void> task = CompletableFuture.runAsync(
-                () -> {
-                    try {
-                        runnable.run();
-                    } catch (ImagePreparationException e) {
-                        if (!player.isCreative())
-                            refund(level, blockHitResult);
-                        e.getDialog().open(level, player);
-                    } catch (Throwable e) {
-                        if (!player.isCreative())
-                            refund(level, blockHitResult);
-                        Sivage.LOGGER.error("Image request for {} failed!", player.getPlainTextName(), e);
-                        ImageDialogs.EXCEPTION.open(level, player);
-                    } finally {
-                        RUNNING.remove(player.getUUID());
-                        if (imageSlotReserved && !placementScheduled.get()) {
-                            releaseImageSlot(player.getUUID());
-                        }
-                    }
-                },
-                Util.backgroundExecutor()
-        );
-
-        if (Sivage.CONFIG.game.playerLimit)
-            RUNNING.put(player.getUUID(), task);
-    }
-
-    private static void refund(ServerLevel level, BlockHitResult blockHitResult) {
-        level.getServer().execute(() -> {
-            Direction facing = blockHitResult.getDirection();
-            Vec3 centeredPos = Vec3.atCenterOf(blockHitResult.getBlockPos().relative(facing));
-
-            ItemStack deposit = getDefaultConsumable(level);
-            dropItemAt(level, deposit, centeredPos);
-        });
+    private static void prepareImage(RequestState request) {
+        try {
+            byte[] raw = ImageProvider.getRawImage(request.proxy, request.url, request.requester());
+            byte[] colors = ImageProvider.renderMapColors(raw, request.metadata);
+            request.server.execute(() -> completeRequest(request, colors));
+        } catch (ImagePreparationException e) {
+            request.server.execute(() -> failRequest(request, e));
+        } catch (Throwable e) {
+            request.server.execute(() -> failRequest(request, e));
+        }
     }
 
     /**
@@ -367,13 +373,8 @@ public class ImageItem {
             return InteractionResult.PASS;
 
         if (player instanceof ServerPlayer serverPlayer) {
-            boolean isOwner = frame.hasAttached(SIGNATURE_TYPE)
-                    && serverPlayer.getStringUUID().equals(frame.getAttachedOrThrow(SIGNATURE_TYPE).getFirst());
-
-            if (!isOwner && !SivagePermissions.canRemoveAnyImage(serverPlayer)) {
-                serverPlayer.sendSystemMessage(SivagePermissions.REMOVE_DENIED);
+            if (!canPlayerRemoveImage(serverPlayer, frame, true))
                 return InteractionResult.FAIL;
-            }
         }
 
         destroyImage((ServerLevel) level, frame, player);
@@ -381,23 +382,107 @@ public class ImageItem {
         return InteractionResult.SUCCESS;
     }
 
-    /**
-     * <p>Responsible for downloading, adjusting, splitting and placing down the image with feedback to the player</p>
-     */
-    @Blocking
-    private static void prepareImage(URL url, ImageMetaData metadata, ServerLevel level, ServerPlayer player, BlockHitResult ignoredBlockHitResult, WithFinishedMaps onSuccess) throws ImagePreparationException {
-        MinecraftServer server = level.getServer();
+    private static void completeRequest(RequestState request, byte[] colors) {
+        if (!isCurrentRequest(request))
+            return;
 
-        ImageDialogs.PREPARE.open(level, player);
+        ServerPlayer player = request.player;
+        try {
+            if (!canComplete(request)) {
+                refundToPlayer(request);
+                ImageDialogs.close(player);
+                return;
+            }
+            if (!SivagePermissions.canCreate(player)) {
+                refundToPlayer(request);
+                ImageDialogs.close(player);
+                player.sendSystemMessage(SivagePermissions.CREATE_DENIED);
+                return;
+            }
+            if (!isReservedImageSlotValid(player, request)) {
+                refundToPlayer(request);
+                ImageDialogs.close(player);
+                player.sendOverlayMessage(getImageLimitReachedMessage(player));
+                return;
+            }
 
-        byte[] raw = ImageProvider.getRawImage(server, url);
-        ItemStack[][] maps = ImageProvider.createMaps(level, raw, metadata);
+            ItemStack placementItem = request.consumed.isEmpty()
+                    ? getDefaultConsumable(request.level)
+                    : request.consumed;
+            if (!canPlaceImage(player, request.level, request.blockHitResult, request.metadata, placementItem)) {
+                refundToPlayer(request);
+                ImageDialogs.close(player);
+                return;
+            }
 
-        ImageDialogs.close(player);
-        onSuccess.consume(maps);
+            ItemStack[][] maps = ImageProvider.createMaps(request.level, colors, request.metadata);
+            if (!placeImage(player, request.level, request.blockHitResult, maps, request.metadata)) {
+                refundToPlayer(request);
+                ImageDialogs.EXCEPTION.open(request.level, player);
+                Sivage.LOGGER.error("Image placement for {} failed after successful preparation.", request.requester());
+                return;
+            }
+            ImageDialogs.close(player);
+        } catch (Throwable e) {
+            refundToPlayer(request);
+            Sivage.LOGGER.error("Image request for {} failed while committing on the server thread.", request.requester(), e);
+            ImageDialogs.EXCEPTION.open(request.level, player);
+        } finally {
+            finishRequest(request);
+        }
     }
 
-    private static void placeImage(ServerPlayer player, ServerLevel level, BlockHitResult blockHitResult, ItemStack[][] maps, ImageMetaData metadata) {
+    private static void failRequest(RequestState request, Throwable failure) {
+        if (!isCurrentRequest(request))
+            return;
+
+        try {
+            refundToPlayer(request);
+            if (failure instanceof LinkVerifier.BlockedLinkException blocked) {
+                ImageDialogs.openBlockedUrl(request.player, blocked);
+            } else if (failure instanceof ImagePreparationException preparation) {
+                preparation.getDialog().open(request.level, request.player);
+            } else {
+                Sivage.LOGGER.error("Image request for {} failed!", request.requester(), failure);
+                ImageDialogs.EXCEPTION.open(request.level, request.player);
+            }
+        } finally {
+            finishRequest(request);
+        }
+    }
+
+    private static boolean canComplete(RequestState request) {
+        ServerPlayer player = request.player;
+        MinecraftServer server = request.level.getServer();
+        if (server.getPlayerList().getPlayer(player.getUUID()) != player || player.isRemoved()
+                || !player.isAlive() || player.isSpectator() || player.level() != request.level)
+            return false;
+
+        double reach = player.getAttributes().getValue(Attributes.BLOCK_INTERACTION_RANGE) + 1.0D;
+        return player.distanceToSqr(Vec3.atCenterOf(request.blockHitResult.getBlockPos())) <= reach * reach;
+    }
+
+    private static boolean canPlaceImage(ServerPlayer player, ServerLevel level, BlockHitResult hit,
+                                         ImageMetaData metadata, ItemStack placementItem) {
+        Direction facing = hit.getDirection();
+        BlockPos origin = hit.getBlockPos().relative(facing);
+        for (int y = 0; y < metadata.getBlockHeight(); y++) {
+            for (int x = 0; x < metadata.getBlockWidth(); x++) {
+                BlockPos position = ImageGeometry.offset(origin, facing, -x, y);
+                if (!level.isLoaded(position) || !level.isInWorldBounds(position)
+                        || !level.getWorldBorder().isWithinBounds(position)
+                        || !player.mayUseItemAt(position, facing, placementItem))
+                    return false;
+
+                ItemFrame probe = new ItemFrame(level, position, facing);
+                if (!probe.survives())
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean placeImage(ServerPlayer player, ServerLevel level, BlockHitResult blockHitResult, ItemStack[][] maps, ImageMetaData metadata) {
         Direction facing = blockHitResult.getDirection();
         BlockPos blockpos = blockHitResult.getBlockPos().relative(facing);
 
@@ -406,24 +491,23 @@ public class ImageItem {
         int height = maps.length;
         int width = maps[0].length;
         long createdAt = System.currentTimeMillis();
+        List<ItemFrame> added = new java.util.ArrayList<>(width * height);
 
         for (int y=0; y<height; y++) {
             for (int x=0; x<width; x++) {
-                BlockPos curPos = offsetOnPainting(blockpos, facing, -x, y);
+                BlockPos curPos = ImageGeometry.offset(blockpos, facing, -x, y);
                 ItemFrame itemFrame = createFramedImage(level, player.getStringUUID(), metadata.url(), createdAt, curPos, facing, maps[maps.length-1-y][x], uuid, metadata.transparent(), false);
-
-                // Place Frame in world
-
+                if (!level.addFreshEntity(itemFrame)) {
+                    added.forEach(Entity::discard);
+                    return false;
+                }
+                added.add(itemFrame);
                 level.gameEvent(player, GameEvent.ENTITY_PLACE, itemFrame.position());
-                level.addFreshEntity(itemFrame);
             }
         }
 
         playSound(level, (width * height), blockpos, SoundEvents.PAINTING_PLACE);
-    }
-
-    private interface WithFinishedMaps {
-        void consume(ItemStack[][] maps);
+        return true;
     }
 
     public static void destroyImage(ServerLevel level, ItemFrame frame, @Nullable Entity breaker) {
@@ -446,19 +530,45 @@ public class ImageItem {
         dropItemAt(level, defaultConsumable, centeredPos);
     }
 
+    public static boolean canDamageImage(ItemFrame frame, DamageSource damageSource) {
+        @Nullable Entity responsible = damageSource.getEntity();
+        if (!(responsible instanceof Player)) {
+            Entity direct = damageSource.getDirectEntity();
+            if (direct instanceof TraceableEntity traceable)
+                responsible = traceable.getOwner();
+        }
+
+        if (responsible instanceof ServerPlayer player)
+            return canPlayerRemoveImage(player, frame, true);
+        return true;
+    }
+
+    private static boolean canPlayerRemoveImage(ServerPlayer player, ItemFrame frame, boolean notify) {
+        @Nullable Pair<String, String> signature = frame.getAttached(SIGNATURE_TYPE);
+        boolean isOwner = signature != null && player.getStringUUID().equals(signature.getFirst());
+        boolean allowed = isOwner || SivagePermissions.canRemoveAnyImage(player);
+        if (!allowed && notify)
+            player.sendSystemMessage(SivagePermissions.REMOVE_DENIED);
+        return allowed;
+    }
+
     private static void forWholeImage(ServerLevel level, ItemFrame frame, ForFramePart applier) {
         AABB box = new AABB(
                 frame.getX() - MAX_SUPPORTED_SIZE - 0.6, frame.getY() - MAX_SUPPORTED_SIZE - 0.6, frame.getZ() - MAX_SUPPORTED_SIZE - 0.6,
                 frame.getX() + MAX_SUPPORTED_SIZE + 0.6, frame.getY() + MAX_SUPPORTED_SIZE + 0.6, frame.getZ() + MAX_SUPPORTED_SIZE + 0.6
         );
 
-        UUID uuid = UUID.fromString(frame.getAttachedOrThrow(ID_TYPE));
+        @Nullable UUID uuid = getImageId(frame);
+        if (uuid == null) {
+            applier.apply(frame);
+            return;
+        }
         List<Entity> entities = level.getEntities(null, box).stream().filter((entry) -> {
             if (!(entry instanceof ItemFrame other) || !other.hasAttached(ID_TYPE))
                 return false;
 
-            UUID currentUUID = UUID.fromString(other.getAttachedOrThrow(ID_TYPE));
-            return uuid.equals(currentUUID);
+            @Nullable UUID currentUUID = getImageId(other);
+            return currentUUID != null && uuid.equals(currentUUID);
         }).toList();
 
         entities.forEach((entity) -> applier.apply((ItemFrame) entity));
@@ -466,6 +576,18 @@ public class ImageItem {
 
     interface ForFramePart {
         void apply(ItemFrame frame);
+    }
+
+    public static @Nullable UUID getImageId(ItemFrame frame) {
+        @Nullable String raw = frame.getAttached(ID_TYPE);
+        if (raw == null)
+            return null;
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ignored) {
+            Sivage.LOGGER.warn("Ignoring malformed Sivage image id '{}' on frame {}.", raw, frame.getUUID());
+            return null;
+        }
     }
 
     private static ItemFrame createFramedImage(ServerLevel level, String player, String url, long createdAt, BlockPos curPos, Direction facing, ItemStack map, String uuid, boolean transparent, boolean glow) {
@@ -494,28 +616,6 @@ public class ImageItem {
 
         CompoundTag compoundTag = customData.copyTag();
         return compoundTag.getBoolean(IS_CUSTOM_IMAGE_TYPE).orElse(false);
-    }
-
-    private static BlockPos offsetOnPainting(BlockPos origin, Direction dir, int offX, int offY) {
-        Direction rightDir;
-        Direction upDir;
-
-        boolean onWall = dir.getAxis().isHorizontal();
-        int inverter = onWall ? 1 : -1;
-
-        if (onWall) {
-            rightDir = dir.getClockWise();
-            upDir = Direction.UP;
-        } else {
-            rightDir = Direction.EAST;
-            upDir = (dir == Direction.UP) ? Direction.SOUTH : Direction.NORTH;
-        }
-
-        return origin.offset(
-                inverter * rightDir.getStepX() * offX + inverter * upDir.getStepX() * offY,
-                inverter * rightDir.getStepY() * offX + inverter * upDir.getStepY() * offY,
-                inverter * rightDir.getStepZ() * offX + inverter * upDir.getStepZ() * offY
-        );
     }
 
     public static ItemStack getDefaultConsumable(ServerLevel level) {
@@ -628,6 +728,19 @@ public class ImageItem {
         }
     }
 
+    private static boolean isReservedImageSlotValid(ServerPlayer player, RequestState request) {
+        int maxImagesPerPlayer = SivagePermissions.getImageLimit(player, Sivage.CONFIG.game.maxImagesPerPlayer);
+        if (maxImagesPerPlayer <= 0)
+            return true;
+
+        synchronized (PENDING_IMAGE_CREATIONS) {
+            int activeImages = countOwnedImages(player);
+            int pendingImages = PENDING_IMAGE_CREATIONS.getOrDefault(player.getUUID(), 0);
+            int unreservedCurrentRequest = request.imageSlotReserved ? 0 : 1;
+            return activeImages + pendingImages + unreservedCurrentRequest <= maxImagesPerPlayer;
+        }
+    }
+
     private static void releaseImageSlot(UUID playerId) {
         synchronized (PENDING_IMAGE_CREATIONS) {
             int pendingImages = PENDING_IMAGE_CREATIONS.getOrDefault(playerId, 0);
@@ -637,6 +750,50 @@ public class ImageItem {
                 PENDING_IMAGE_CREATIONS.put(playerId, pendingImages - 1);
             }
         }
+    }
+
+    private static boolean isCurrentRequest(RequestState request) {
+        return !request.finished && REQUESTS.get(request.player.getUUID()) == request;
+    }
+
+    private static void finishRequest(RequestState request) {
+        if (request.finished)
+            return;
+        request.finished = true;
+        UUID playerId = request.player.getUUID();
+        REQUESTS.remove(playerId, request);
+        coordinator().finish(playerId);
+        if (request.imageSlotReserved)
+            releaseImageSlot(playerId);
+    }
+
+    private static void refundToPlayer(RequestState request) {
+        if (request.refunded || request.consumed.isEmpty())
+            return;
+        request.refunded = true;
+
+        ItemStack refund = request.consumed.copy();
+        request.player.getInventory().add(refund);
+        if (!refund.isEmpty())
+            request.player.drop(refund, true, false);
+    }
+
+    public static void onPlayerDisconnect(ServerPlayer player) {
+        RequestState request = REQUESTS.get(player.getUUID());
+        if (request == null)
+            return;
+        coordinator().cancel(player.getUUID());
+        refundToPlayer(request);
+        finishRequest(request);
+    }
+
+    public static void onServerStopping(MinecraftServer ignoredServer) {
+        for (RequestState request : List.copyOf(REQUESTS.values())) {
+            coordinator().cancel(request.player.getUUID());
+            refundToPlayer(request);
+            finishRequest(request);
+        }
+        requestCoordinator.shutdown();
     }
 
     private static int countOwnedImages(ServerPlayer player) {
@@ -654,7 +811,9 @@ public class ImageItem {
 
                 Pair<String, String> signature = frame.getAttachedOrThrow(SIGNATURE_TYPE);
                 if (playerId.equals(signature.getFirst())) {
-                    imageIds.add(UUID.fromString(frame.getAttachedOrThrow(ID_TYPE)));
+                    @Nullable UUID imageId = getImageId(frame);
+                    if (imageId != null)
+                        imageIds.add(imageId);
                 }
             }
         }
@@ -674,5 +833,39 @@ public class ImageItem {
                 "You can only have %s Sivage images placed at a time.",
                 SivagePermissions.getImageLimit(player, Sivage.CONFIG.game.maxImagesPerPlayer)
         );
+    }
+
+    private static final class RequestState {
+        private final ServerPlayer player;
+        private final ServerLevel level;
+        private final MinecraftServer server;
+        private final BlockHitResult blockHitResult;
+        private final ImageMetaData metadata;
+        private final URL url;
+        private final Proxy proxy;
+        private final ItemStack consumed;
+        private final boolean imageSlotReserved;
+        private final String requester;
+        private boolean refunded;
+        private boolean finished;
+
+        private RequestState(ServerPlayer player, ServerLevel level, BlockHitResult blockHitResult,
+                             ImageMetaData metadata, URL url, Proxy proxy, ItemStack consumed,
+                             boolean imageSlotReserved) {
+            this.player = player;
+            this.level = level;
+            this.server = level.getServer();
+            this.blockHitResult = blockHitResult;
+            this.metadata = metadata;
+            this.url = url;
+            this.proxy = proxy;
+            this.consumed = consumed;
+            this.imageSlotReserved = imageSlotReserved;
+            this.requester = player.getPlainTextName() + " (" + player.getStringUUID() + ")";
+        }
+
+        private String requester() {
+            return requester;
+        }
     }
 }

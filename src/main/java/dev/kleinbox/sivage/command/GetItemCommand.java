@@ -16,8 +16,9 @@ public class GetItemCommand {
         ServerPlayer player = context.getSource().getPlayerOrException();
 
         ItemStack stack = ImageItem.getDefaultConsumable(context.getSource().getLevel());
-        if (!player.getInventory().add(stack))
-            player.drop(stack.copy(), true, false);
+        player.getInventory().add(stack);
+        if (!stack.isEmpty())
+            player.drop(stack, true, false);
 
         context.getSource().sendSuccess(
                 () -> Component.translatableWithFallback("sivage.chat.item.single", "Gave Custom Image item."),
@@ -30,11 +31,12 @@ public class GetItemCommand {
     public static int executeGetItemForMany(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         Collection<ServerPlayer> players = EntityArgument.getPlayers(context, "for");
 
-        ItemStack stack = ImageItem.getDefaultConsumable(context.getSource().getLevel());
-
-        for (ServerPlayer player : players)
-            if (!player.getInventory().add(stack))
-                player.drop(stack.copy(), true, false);
+        for (ServerPlayer player : players) {
+            ItemStack stack = ImageItem.getDefaultConsumable(context.getSource().getLevel());
+            player.getInventory().add(stack);
+            if (!stack.isEmpty())
+                player.drop(stack, true, false);
+        }
 
         context.getSource().sendSuccess(
                 () -> (players.size() == 1)
@@ -43,7 +45,7 @@ public class GetItemCommand {
                 false
         );
 
-        return 1;
+        return players.size();
     }
 
 }

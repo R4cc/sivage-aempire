@@ -12,6 +12,8 @@ import dev.kleinbox.sivage.packet.ImageDialogs;
  * <p>Changes made in this class must be carefully aligned with the rust code.</p>
  */
 public class Imaging {
+    private static final long RESULT_INVALID_IMAGE = 0L;
+    private static final long RESULT_TOO_LARGE = 1L;
     private final Instance instance;
 
     public Imaging() {
@@ -28,25 +30,38 @@ public class Imaging {
     }
 
     public byte[] getMapArt(byte[] imageBytes, ImageMetaData metadata) throws ImagePreparationException  {
+        int inPtr = 0;
+        int outPtr = 0;
+        int outLen = 0;
+        boolean inputAllocated = false;
+        boolean outputAllocated = false;
         try {
-            int inPtr = alloc(imageBytes.length);
+            inPtr = alloc(imageBytes.length);
+            inputAllocated = true;
             write(inPtr, imageBytes);
 
             long packed = getMapArt(inPtr, imageBytes.length, metadata);
-            if (packed == 0L)
+            if (packed == RESULT_INVALID_IMAGE)
                 throw new ImagePreparationException(ImageDialogs.FAILED_FILE);
+            if (packed == RESULT_TOO_LARGE)
+                throw new ImagePreparationException(ImageDialogs.TOO_LARGE);
 
-            int outPtr = (int) (packed >>> 32);
-            int outLen = (int) packed;
+            outPtr = (int) (packed >>> 32);
+            outLen = (int) packed;
+            if (outPtr == 0 || outLen <= 0)
+                throw new ImagePreparationException(ImageDialogs.FAILED_FILE);
+            outputAllocated = true;
 
-            byte[] map = read(outPtr, outLen);
-
-            free(outPtr, outLen);
-            free(inPtr, imageBytes.length);
-
-            return map;
+            return read(outPtr, outLen);
+        } catch (ImagePreparationException e) {
+            throw e;
         } catch (Throwable e) {
             throw new ImagePreparationException(ImageDialogs.FAILED_FILE);
+        } finally {
+            if (outputAllocated)
+                free(outPtr, outLen);
+            if (inputAllocated)
+                free(inPtr, imageBytes.length);
         }
     }
 
