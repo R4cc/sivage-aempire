@@ -45,6 +45,7 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.crafting.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.phys.*;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
@@ -199,6 +200,14 @@ public class ImageItem {
         playSound(serverLevel, size.get(),  frame.getPos(), glow ? SoundEvents.GLOW_INK_SAC_USE : SoundEvents.INK_SAC_USE);
 
         return InteractionResult.SUCCESS;
+    }
+
+    /**
+     * Clears the vanilla invulnerability flag from images created by older Sivage versions.
+     */
+    public static void onEntityLoad(Entity entity, ServerLevel ignoredLevel) {
+        if (entity instanceof ItemFrame frame && frame.hasAttached(ID_TYPE))
+            frame.fixed = false;
     }
 
     /**
@@ -367,7 +376,7 @@ public class ImageItem {
             }
         }
 
-        destroyImage(player, (ServerLevel) level, frame);
+        destroyImage((ServerLevel) level, frame, player);
 
         return InteractionResult.SUCCESS;
     }
@@ -417,21 +426,24 @@ public class ImageItem {
         void consume(ItemStack[][] maps);
     }
 
-    private static void destroyImage(Player player, ServerLevel level, ItemFrame frame) {
+    public static void destroyImage(ServerLevel level, ItemFrame frame, @Nullable Entity breaker) {
         AtomicInteger size = new AtomicInteger();
         forWholeImage(level, frame, (framePart) -> {
             size.getAndIncrement();
-            framePart.remove(Entity.RemovalReason.KILLED);
+            framePart.kill(level);
         });
-        playSound(level, size.get(), frame.getPos(), SoundEvents.PAINTING_BREAK);
 
-        // Returning item
+        if (!level.getGameRules().get(GameRules.ENTITY_DROPS))
+            return;
 
-        if (!player.isCreative()) {
-            Vec3 centeredPos = frame.position();
-            ItemStack defaultConsumable = getDefaultConsumable(level);
-            dropItemAt(level, defaultConsumable, centeredPos);
-        }
+        playSound(level, Math.max(1, size.get()), frame.getPos(), SoundEvents.PAINTING_BREAK);
+
+        if (breaker instanceof Player player && player.hasInfiniteMaterials())
+            return;
+
+        Vec3 centeredPos = frame.position();
+        ItemStack defaultConsumable = getDefaultConsumable(level);
+        dropItemAt(level, defaultConsumable, centeredPos);
     }
 
     private static void forWholeImage(ServerLevel level, ItemFrame frame, ForFramePart applier) {
@@ -464,7 +476,6 @@ public class ImageItem {
             itemFrame = new ItemFrame(level, curPos, facing);
         }
 
-        itemFrame.fixed = true;
         itemFrame.setInvisible(transparent);
         itemFrame.setItem(map);
         itemFrame.setAttached(ID_TYPE, uuid);

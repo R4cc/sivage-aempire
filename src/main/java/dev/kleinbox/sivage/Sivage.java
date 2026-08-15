@@ -7,6 +7,7 @@ import dev.kleinbox.sivage.item.ImageItem;
 import dev.kleinbox.sivage.packet.C2SCustomActionEvent;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
@@ -28,6 +29,7 @@ public class Sivage implements ModInitializer {
 	public void onInitialize() {
         UseBlockCallback.EVENT.register(ImageItem::onBlockUse);
         UseEntityCallback.EVENT.register(ImageItem::onEntityUse);
+        ServerEntityEvents.ENTITY_LOAD.register(ImageItem::onEntityLoad);
         C2SCustomActionEvent.ON_RECEIVE.register(ImageItem::onPlace);
         AttackEntityCallback.EVENT.register(ImageItem::onDestroy);
         LOGGER.info("Registered events for Custom Images!");
